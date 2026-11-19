@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Real-Time 3D Mandelbulb (WebGL2)</title>
+  <style>
+    :root {
+      --hud-bg: rgba(15, 18, 28, 0.78);
+      --hud-border: rgba(90, 110, 150, 0.55);
+      --text-main: rgb(235, 240, 250);
+      --text-label: rgb(210, 220, 235);
+      --text-hint: rgb(150, 165, 190);
+      --track-bg: rgb(70, 80, 105);
+      --thumb-fill: rgb(240, 245, 255);
+      --accent-power: #5fafff;
+      --accent-eps: #ffaf5f;
+      --accent-alpha: #82e69b;
+      --accent-beta: #d791ff;
+      --accent-shade: #ff6b8b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #080a14;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
+      touch-action: none;
+    }
+
+    #gl-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    #gl-canvas:active {
+      cursor: grabbing;
+    }
+
+    /* Glassmorphic HUD matching Python overlay */
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 336px;
+      max-width: calc(100vw - 32px);
+      background: var(--hud-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--hud-border);
+      border-radius: 10px;
+      padding: 12px 16px 12px 16px;
+      color: var(--text-main);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 10;
+    }
+
+    #hud.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-8px);
+    }
+
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    .fps-badge {
+      font-variant-numeric: tabular-nums;
+      color: var(--text-main);
+    }
+
+    .slider-group {
+      margin-bottom: 12px;
+    }
+
+    .slider-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13.5px;
+      color: var(--text-label);
+      margin-bottom: 5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Custom Range Slider */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 16px;
+      background: transparent;
+      cursor: pointer;
+      outline: none;
+    }
+
+    /* Track styling dynamically updated via JS linear-gradient */
+    input[type="range"]::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+    }
+
+    input[type="range"]::-moz-range-track {
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+    }
+
+    /* Thumb styling */
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--thumb-fill);
+      margin-top: -5px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      transition: transform 0.1s ease;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: none;
+      border-radius: 50%;
+      background: var(--thumb-fill);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      transition: transform 0.1s ease;
+    }
+
+    input[type="range"]:hover::-webkit-slider-thumb,
+    input[type="range"]:active::-webkit-slider-thumb {
+      transform: scale(1.18);
+    }
+
+    input[type="range"]:hover::-moz-range-thumb,
+    input[type="range"]:active::-moz-range-thumb {
+      transform: scale(1.18);
+    }
+
+    .hud-footer {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(90, 110, 150, 0.25);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .hud-hint {
+      font-size: 11.5px;
+      color: var(--text-hint);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hud-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .hud-btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(130, 155, 200, 0.35);
+      color: var(--text-label);
+      font-family: inherit;
+      font-size: 11.5px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+    .hud-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(160, 185, 230, 0.65);
+      color: #ffffff;
+    }
+
+    .hud-btn:active {
+      transform: translateY(1px);
+    }
+
+    /* Floating pill button when HUD is hidden */
+    #show-hud-pill {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--hud-border);
+      color: var(--text-label);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      z-index: 9;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, background 0.15s ease;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    #show-hud-pill.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #show-hud-pill:hover {
+      background: rgba(28, 34, 52, 0.9);
+      color: #ffffff;
+    }
+
+    /* Fallback error message box */
+    #error-box {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #0c0f1a;
+      color: #f87171;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      z-index: 50;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gl-canvas"></canvas>
+
+  <!-- Floating toggle pill shown when HUD is hidden -->
+  <button id="show-hud-pill" type="button" title="Show HUD (H)">Show HUD [H]</button>
+
+  <!-- Glassmorphic HUD Overlay -->
+  <aside id="hud" aria-label="Mandelbulb Controls">
+    <div class="hud-header">
+      <span>Mandelbulb</span>
+      <span id="fps-display" class="fps-badge">60.0 FPS</span>
+    </div>
+
+    <!-- Power Slider -->
+    <div class="slider-group">
+      <div class="slider-label-row">
+        <span>Power:</span>
+        <span id="val-power">8.00</span>
+      </div>
+      <input id="slider-power" type="range" min="2.0" max="16.0" step="0.01" value="8.0" data-accent="#5fafff" />
+    </div>
+
+    <!-- Epsilon Slider (log scale 1e-4 to 1e-2 via t in [0, 1]) -->
+    <div class="slider-group">
+      <div class="slider-label-row">
+        <span>Eps:</span>
+        <span id="val-eps">0.00100</span>
+      </div>
+      <input id="slider-eps" type="range" min="0.0" max="1.0" step="0.001" value="0.5" data-accent="#ffaf5f" />
+    </div>
+
+    <!-- Alpha Slider -->
+    <div class="slider-group">
+      <div class="slider-label-row">
+        <span>Alpha:</span>
+        <span id="val-alpha">+0.0 deg</span>
+      </div>
+      <input id="slider-alpha" type="range" min="-180.0" max="180.0" step="0.1" value="0.0" data-accent="#82e69b" />
+    </div>
+
+    <!-- Beta Slider -->
+    <div class="slider-group">
+      <div class="slider-label-row">
+        <span>Beta:</span>
+        <span id="val-beta">+0.0 deg</span>
+      </div>
+      <input id="slider-beta" type="range" min="-180.0" max="180.0" step="0.1" value="0.0" data-accent="#d791ff" />
+    </div>
+
+    <!-- Shadow & Depth Shading Slider -->
+    <div class="slider-group">
+      <div class="slider-label-row">
+        <span>Shading:</span>
+        <span id="val-shade">100%</span>
+      </div>
+      <input id="slider-shade" type="range" min="0.0" max="1.0" step="0.01" value="1.0" data-accent="#ff6b8b" />
+    </div>
+
+    <div class="hud-footer">
+      <div class="hud-hint">Drag: Rotate | Wheel: Zoom | S: Shading | R: Reset | H: HUD</div>
+      <div class="hud-actions">
+        <button id="btn-shade-mode" class="hud-btn" type="button" title="Toggle Enhanced / Classic Shading (S)">Mode: Enhanced</button>
+        <button id="btn-reset" class="hud-btn" type="button" title="Reset Camera & Parameters (R)">Reset [R]</button>
+        <button id="btn-toggle-hud" class="hud-btn" type="button" title="Hide HUD (H)">Hide [H]</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- WebGL2 Error Fallback -->
+  <div id="error-box">
+    <div>
+      <h2 style="margin-bottom: 8px; font-size: 18px;">WebGL2 Initialization Error</h2>
+      <p id="error-text" style="color: #cbd5e1; font-size: 14px;"></p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // =========================================================================
+      // GLSL Shaders 
+      // =========================================================================
+      const RAYMARCH_VERTEX_SHADER = `#version 300 es
+        precision highp float;
+        in vec2 in_pos;
+        void main() {
+          gl_Position = vec4(in_pos, 0.0, 1.0);
+        }
+      `;
+
+      const RAYMARCH_FRAGMENT_SHADER = `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+
+        uniform vec2 u_resolution;
+        uniform vec3 u_ro;
+        uniform vec3 u_forward;
+        uniform vec3 u_right;
+        uniform vec3 u_up;
+        uniform float u_power;
+        uniform float u_eps;
+        uniform float u_alpha;
+        uniform float u_beta;
+        uniform float u_shade;
+
+        const int MAX_ITER = 12;
+        const int MAX_STEPS = 128;
+        const float BAILOUT = 2.0;
+
+        float mandelbulbDE(vec3 pos, out float trap) {
+          vec3 z = pos;
+          float dr = 1.0;
+          float r = 0.0;
+          trap = 1e10;
+
+          for (int i = 0; i < MAX_ITER; i++) {
+            r = length(z);
+            if (r > BAILOUT) break;
+
+            float r_safe = max(r, 1e-6);
+            trap = min(trap, r_safe);
+
+            float theta = asin(clamp(z.z / r_safe, -1.0, 1.0)) + u_beta;
+            float phi = ((abs(z.x) + abs(z.y) > 1e-7) ? atan(z.y, z.x) : 0.0) + u_alpha;
+
+            dr = pow(r_safe, u_power - 1.0) * u_power * dr + 1.0;
+
+            float zr = pow(r_safe, u_power);
+            theta *= u_power;
+            phi *= u_power;
+
+            float cosTheta = cos(theta);
+            z = zr * vec3(cosTheta * cos(phi), cosTheta * sin(phi), sin(theta));
+            z += pos;
+          }
+
+          float r_safe = max(r, 1e-6);
+          return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+        }
+
+        vec3 calcNormal(vec3 p, float eps) {
+          float h = max(eps * 0.75, 1e-5);
+          float dummy;
+          const vec2 k = vec2(1.0, -1.0);
+          return normalize(
+            k.xyy * mandelbulbDE(p + k.xyy * h, dummy) +
+            k.yyx * mandelbulbDE(p + k.yyx * h, dummy) +
+            k.yxy * mandelbulbDE(p + k.yxy * h, dummy) +
+            k.xxx * mandelbulbDE(p + k.xxx * h, dummy)
+          );
+        }
+
+        vec3 cosinePalette(float t) {
+          vec3 a = vec3(0.50, 0.50, 0.50);
+          vec3 b = vec3(0.50, 0.50, 0.50);
+          vec3 c = vec3(1.00, 1.00, 1.00);
+          vec3 d = vec3(0.00, 0.15, 0.35);
+          return a + b * cos(6.2831853 * (c * t + d));
+        }
+
+        // Soft raymarched penumbra shadow along key light direction
+        float calcSoftShadow(vec3 ro, vec3 rd, float mint, float maxt, float k, float eps) {
+          float res = 1.0;
+          float t = mint;
+          float dummy;
+          for (int i = 0; i < 48; i++) {
+            if (t >= maxt) break;
+            float d = mandelbulbDE(ro + rd * t, dummy);
+            if (d < eps * 0.45) return 0.0;
+            res = min(res, k * d / t);
+            t += clamp(d * 0.85, 0.004, 0.18);
+          }
+          return clamp(res, 0.0, 1.0);
+        }
+
+        // 5-step true SDF ambient occlusion along surface normal
+        float calcSDF_AO(vec3 p, vec3 n) {
+          float occ = 0.0;
+          float sca = 1.0;
+          float dummy;
+          for (int i = 1; i <= 5; i++) {
+            float hr = 0.012 + 0.14 * float(i) / 5.0;
+            float d = mandelbulbDE(p + n * hr, dummy);
+            occ += max(0.0, hr - d) * sca;
+            sca *= 0.68;
+          }
+          return clamp(1.0 - 2.6 * occ, 0.06, 1.0);
+        }
+
+        // ACES Filmic Tone Mapping
+        vec3 acesFilm(vec3 x) {
+          return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+        }
+
+        void main() {
+          vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
+          vec3 rd = normalize(u_forward * 1.6 + uv.x * u_right + uv.y * u_up);
+
+          // Background gradient
+          float bgT = clamp(0.5 * (rd.z + 1.0), 0.0, 1.0);
+          vec3 col = mix(vec3(0.03, 0.04, 0.08), vec3(0.12, 0.16, 0.28), bgT);
+
+          // Bounding sphere intersection (radius 2.2 covers power >= 2.0)
+          float boundR = 2.2;
+          float b = dot(u_ro, rd);
+          float c = dot(u_ro, u_ro) - boundR * boundR;
+          float disc = b * b - c;
+
+          if (disc >= 0.0) {
+            float sqrtDisc = sqrt(disc);
+            float t = max(0.0, -b - sqrtDisc);
+            float tMax = -b + sqrtDisc;
+
+            if (tMax > t) {
+              bool hit = false;
+              float trap = 0.0;
+              int hitSteps = 0;
+
+              for (int i = 0; i < MAX_STEPS; i++) {
+                vec3 p = u_ro + rd * t;
+                float d = mandelbulbDE(p, trap);
+                if (d < u_eps) {
+                  hit = true;
+                  hitSteps = i;
+                  break;
+                }
+                t += d * 0.85;
+                if (t > tMax) break;
+              }
+
+              if (hit) {
+                vec3 p = u_ro + rd * t;
+                vec3 n = calcNormal(p, u_eps);
+
+                vec3 lightDir = normalize(vec3(1.5, -1.0, 2.0));
+                vec3 viewDir = -rd;
+                vec3 halfVec = normalize(lightDir + viewDir);
+
+                float diff = max(dot(n, lightDir), 0.0);
+                float spec = pow(max(dot(n, halfVec), 0.0), 32.0);
+                float stepAO = clamp(1.0 - pow(float(hitSteps) / float(MAX_STEPS), 0.75), 0.1, 1.0);
+
+                float tCol = clamp((trap - 0.35) * 1.4, 0.0, 1.0);
+                vec3 albedo = cosinePalette(tCol);
+
+                // Classic shading (exact Mndlbld1.py formula)
+                vec3 classicCol = albedo * (0.25 * stepAO + 0.85 * diff * stepAO) + 0.35 * spec * stepAO;
+
+                // Enhanced multi-layered 3D shading
+                vec3 enhancedCol = classicCol;
+                if (u_shade > 0.001) {
+                  float sdfAO = calcSDF_AO(p, n);
+                  float ao = mix(stepAO, sdfAO * mix(0.45, 1.0, stepAO), 0.85);
+
+                  float shadow = 1.0;
+                  if (diff > 0.001) {
+                    shadow = calcSoftShadow(p + n * max(u_eps * 2.5, 0.002), lightDir, 0.01, 2.6, 14.0, u_eps);
+                  }
+
+                  // Key light (warm sunlight) modulated by soft raymarched penumbra shadow
+                  vec3 keyColor = vec3(1.12, 1.04, 0.94);
+                  float specSharp = pow(max(dot(n, halfVec), 0.0), 48.0);
+                  float specBroad = pow(max(dot(n, halfVec), 0.0), 12.0);
+                  vec3 keyLight = (albedo * diff * 1.05 + (0.38 * specSharp + 0.10 * specBroad) * mix(vec3(1.0), albedo, 0.25)) * keyColor * shadow;
+
+                  // Cool sky / warm ground hemisphere bounce fill so shadowed folds stay sculpted
+                  float hemi = 0.5 + 0.5 * n.z;
+                  vec3 skyBounce = vec3(0.18, 0.28, 0.46);
+                  vec3 groundBounce = vec3(0.08, 0.06, 0.09);
+                  vec3 fillLight = albedo * mix(groundBounce, skyBounce, hemi) * ao * 0.95;
+
+                  // Subtle back/rim Fresnel light to separate fractal silhouettes
+                  float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 3.5);
+                  vec3 rimDir = normalize(vec3(-1.2, 1.4, 0.8));
+                  float rimWrap = 0.35 + 0.65 * max(dot(n, rimDir), 0.0);
+                  vec3 rimLight = mix(vec3(0.35, 0.58, 0.95), albedo, 0.35) * fresnel * rimWrap * (0.35 + 0.65 * ao) * 0.55;
+
+                  // Subtle deep crevice orbit-trap subsurface glow
+                  float creviceGlow = pow(clamp(1.0 - tCol, 0.0, 1.0), 2.5) * (1.0 - ao);
+                  vec3 sss = albedo * vec3(0.95, 0.55, 0.35) * creviceGlow * 0.32;
+
+                  enhancedCol = acesFilm(keyLight + fillLight + rimLight + sss);
+                }
+
+                col = mix(classicCol, enhancedCol, u_shade);
+              }
+            }
+          }
+
+          col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
+          fragColor = vec4(col, 1.0);
+        }
+      `;
+
+      // =========================================================================
+      // Vector & Math Utilities
+      // =========================================================================
+      function clamp(val, lo, hi) {
+        return Math.max(lo, Math.min(hi, val));
+      }
+
+      function normalizeVec3(v) {
+        const len = Math.hypot(v[0], v[1], v[2]);
+        const inv = 1.0 / Math.max(len, 1e-10);
+        return [v[0] * inv, v[1] * inv, v[2] * inv];
+      }
+
+      function crossVec3(a, b) {
+        return [
+          a[1] * b[2] - a[2] * b[1],
+          a[2] * b[0] - a[0] * b[2],
+          a[0] * b[1] - a[1] * b[0]
+        ];
+      }
+
+      // =========================================================================
+      // WebGL2 Initialization
+      // =========================================================================
+      const canvas = document.getElementById("gl-canvas");
+      const errorBox = document.getElementById("error-box");
+      const errorText = document.getElementById("error-text");
+
+      function showError(msg) {
+        errorText.textContent = msg;
+        errorBox.style.display = "flex";
+      }
+
+      const gl = canvas.getContext("webgl2", {
+        antialias: false,
+        alpha: false,
+        depth: false,
+        stencil: false,
+        powerPreference: "high-performance"
+      });
+
+      if (!gl) {
+        showError("Your browser or device does not support WebGL2, which is required to run this shader.");
+        return;
+      }
+
+      function compileShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const info = gl.getShaderInfoLog(shader);
+          gl.deleteShader(shader);
+          throw new Error(info || "Unknown shader compilation error.");
+        }
+        return shader;
+      }
+
+      let program;
+      try {
+        const vs = compileShader(gl.VERTEX_SHADER, RAYMARCH_VERTEX_SHADER);
+        const fs = compileShader(gl.FRAGMENT_SHADER, RAYMARCH_FRAGMENT_SHADER);
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(program) || "Shader program link failed.");
+        }
+      } catch (err) {
+        showError(err.message);
+        return;
+      }
+
+      // Fullscreen triangle-strip / 2-triangle quad matching Python VBO
+      const quadVerts = new Float32Array([
+        -1.0, -1.0,
+         1.0, -1.0,
+        -1.0,  1.0,
+        -1.0,  1.0,
+         1.0, -1.0,
+         1.0,  1.0
+      ]);
+
+      const vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+
+      const vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+
+      const posLoc = gl.getAttribLocation(program, "in_pos");
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+      // Uniform locations
+      const uniforms = {
+        u_resolution: gl.getUniformLocation(program, "u_resolution"),
+        u_ro: gl.getUniformLocation(program, "u_ro"),
+        u_forward: gl.getUniformLocation(program, "u_forward"),
+        u_right: gl.getUniformLocation(program, "u_right"),
+        u_up: gl.getUniformLocation(program, "u_up"),
+        u_power: gl.getUniformLocation(program, "u_power"),
+        u_eps: gl.getUniformLocation(program, "u_eps"),
+        u_alpha: gl.getUniformLocation(program, "u_alpha"),
+        u_beta: gl.getUniformLocation(program, "u_beta"),
+        u_shade: gl.getUniformLocation(program, "u_shade")
+      };
+
+      // =========================================================================
+      // Application State (Exact match to Mndlbld1.py defaults + Shading)
+      // =========================================================================
+      const DEFAULTS = {
+        yaw: -0.68,
+        pitch: 0.45,
+        camDist: 3.0,
+        power: 8.0,
+        epsT: 0.5,
+        alphaDeg: 0.0,
+        betaDeg: 0.0,
+        shade: 1.0
+      };
+
+      const state = {
+        yaw: DEFAULTS.yaw,
+        pitch: DEFAULTS.pitch,
+        camDist: DEFAULTS.camDist,
+        power: DEFAULTS.power,
+        epsT: DEFAULTS.epsT,
+        alphaDeg: DEFAULTS.alphaDeg,
+        betaDeg: DEFAULTS.betaDeg,
+        shade: DEFAULTS.shade,
+        showHud: true
+      };
+
+      function getEps() {
+        return Math.pow(10.0, -4.0 + state.epsT * 2.0);
+      }
+
+      // =========================================================================
+      // High-DPI Canvas Resize Handling
+      // =========================================================================
+      function resizeCanvas() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        const displayWidth = Math.max(1, Math.floor(window.innerWidth * dpr));
+        const displayHeight = Math.max(1, Math.floor(window.innerHeight * dpr));
+
+        if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+          canvas.width = displayWidth;
+          canvas.height = displayHeight;
+          gl.viewport(0, 0, displayWidth, displayHeight);
+        }
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      // =========================================================================
+      // HUD Controls & UI Sync
+      // =========================================================================
+      const hudEl = document.getElementById("hud");
+      const showHudPill = document.getElementById("show-hud-pill");
+      const fpsDisplay = document.getElementById("fps-display");
+
+      const sliderPower = document.getElementById("slider-power");
+      const sliderEps = document.getElementById("slider-eps");
+      const sliderAlpha = document.getElementById("slider-alpha");
+      const sliderBeta = document.getElementById("slider-beta");
+      const sliderShade = document.getElementById("slider-shade");
+
+      const valPower = document.getElementById("val-power");
+      const valEps = document.getElementById("val-eps");
+      const valAlpha = document.getElementById("val-alpha");
+      const valBeta = document.getElementById("val-beta");
+      const valShade = document.getElementById("val-shade");
+      const btnShadeMode = document.getElementById("btn-shade-mode");
+
+      function formatSignedDeg(deg) {
+        const sign = deg >= 0 ? "+" : "-";
+        return `${sign}${Math.abs(deg).toFixed(1)} deg`;
+      }
+
+      function paintSliderTrack(slider) {
+        const min = parseFloat(slider.min);
+        const max = parseFloat(slider.max);
+        const val = parseFloat(slider.value);
+        const pct = ((val - min) / (max - min)) * 100;
+        const accent = slider.dataset.accent || "#5fafff";
+        const trackBg = "rgb(70, 80, 105)";
+        slider.style.background = `linear-gradient(to right, ${accent} 0%, ${accent} ${pct}%, ${trackBg} ${pct}%, ${trackBg} 100%)`;
+        slider.style.borderRadius = "2px";
+        slider.style.height = "4px";
+        slider.style.margin = "6px 0";
+      }
+
+      function syncHudUI() {
+        sliderPower.value = state.power.toFixed(2);
+        sliderEps.value = state.epsT.toFixed(3);
+        sliderAlpha.value = state.alphaDeg.toFixed(1);
+        sliderBeta.value = state.betaDeg.toFixed(1);
+        sliderShade.value = state.shade.toFixed(2);
+
+        valPower.textContent = state.power.toFixed(2);
+        valEps.textContent = getEps().toFixed(5);
+        valAlpha.textContent = formatSignedDeg(state.alphaDeg);
+        valBeta.textContent = formatSignedDeg(state.betaDeg);
+        valShade.textContent = `${Math.round(state.shade * 100)}%`;
+
+        btnShadeMode.textContent = state.shade > 0.01 ? "Mode: Enhanced" : "Mode: Classic";
+
+        paintSliderTrack(sliderPower);
+        paintSliderTrack(sliderEps);
+        paintSliderTrack(sliderAlpha);
+        paintSliderTrack(sliderBeta);
+        paintSliderTrack(sliderShade);
+      }
+
+      function setHudVisibility(visible) {
+        state.showHud = visible;
+        if (visible) {
+          hudEl.classList.remove("hidden");
+          showHudPill.classList.remove("visible");
+        } else {
+          hudEl.classList.add("hidden");
+          showHudPill.classList.add("visible");
+        }
+      }
+
+      function resetAll() {
+        state.yaw = DEFAULTS.yaw;
+        state.pitch = DEFAULTS.pitch;
+        state.camDist = DEFAULTS.camDist;
+        state.power = DEFAULTS.power;
+        state.epsT = DEFAULTS.epsT;
+        state.alphaDeg = DEFAULTS.alphaDeg;
+        state.betaDeg = DEFAULTS.betaDeg;
+        state.shade = DEFAULTS.shade;
+        syncHudUI();
+      }
+
+      function toggleShadeMode() {
+        state.shade = state.shade > 0.01 ? 0.0 : 1.0;
+        syncHudUI();
+      }
+
+      sliderPower.addEventListener("input", () => {
+        state.power = parseFloat(sliderPower.value);
+        syncHudUI();
+      });
+
+      sliderEps.addEventListener("input", () => {
+        state.epsT = parseFloat(sliderEps.value);
+        syncHudUI();
+      });
+
+      sliderAlpha.addEventListener("input", () => {
+        state.alphaDeg = parseFloat(sliderAlpha.value);
+        syncHudUI();
+      });
+
+      sliderBeta.addEventListener("input", () => {
+        state.betaDeg = parseFloat(sliderBeta.value);
+        syncHudUI();
+      });
+
+      sliderShade.addEventListener("input", () => {
+        state.shade = parseFloat(sliderShade.value);
+        syncHudUI();
+      });
+
+      btnShadeMode.addEventListener("click", toggleShadeMode);
+      document.getElementById("btn-reset").addEventListener("click", resetAll);
+      document.getElementById("btn-toggle-hud").addEventListener("click", () => setHudVisibility(false));
+      showHudPill.addEventListener("click", () => setHudVisibility(true));
+
+      syncHudUI();
+
+      // =========================================================================
+      // Keyboard Shortcuts (S: Shading Mode, R: Reset, H: Toggle HUD)
+      // =========================================================================
+      window.addEventListener("keydown", (e) => {
+        if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+          // Allow R, H, and S even if a range input is focused
+          const k = e.key.toLowerCase();
+          if (k !== "r" && k !== "h" && k !== "s") return;
+        }
+        const key = e.key.toLowerCase();
+        if (key === "h") {
+          setHudVisibility(!state.showHud);
+        } else if (key === "r") {
+          resetAll();
+        } else if (key === "s") {
+          toggleShadeMode();
+        }
+      });
+
+      // =========================================================================
+      // Mouse & Touch Orbit + Zoom Controls
+      // =========================================================================
+      let isDragging = false;
+      let lastPointerX = 0;
+      let lastPointerY = 0;
+
+      // Mouse drag to orbit
+      canvas.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        isDragging = true;
+        lastPointerX = e.clientX;
+        lastPointerY = e.clientY;
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - lastPointerX;
+        const dy = e.clientY - lastPointerY;
+        lastPointerX = e.clientX;
+        lastPointerY = e.clientY;
+
+        state.yaw -= dx * 0.007;
+        state.pitch = clamp(state.pitch + dy * 0.007, -1.5, 1.5);
+      });
+
+      window.addEventListener("mouseup", (e) => {
+        if (e.button === 0) {
+          isDragging = false;
+        }
+      });
+
+      // Mouse wheel to zoom
+      canvas.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        // Normalize wheel delta across browsers to match pygame MOUSEWHEEL unit ticks
+        const wheelSteps = -Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY) / 100.0, 2.0);
+        state.camDist = clamp(state.camDist * Math.pow(0.9, wheelSteps), 1.35, 8.0);
+      }, { passive: false });
+
+      // Touch drag (1 finger) and pinch-to-zoom (2 fingers)
+      let activeTouches = new Map();
+      let lastPinchDist = null;
+
+      function getTouchDistance(t1, t2) {
+        return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      }
+
+      canvas.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          activeTouches.set(t.identifier, { clientX: t.clientX, clientY: t.clientY });
+        }
+
+        if (activeTouches.size === 1) {
+          const onlyTouch = activeTouches.values().next().value;
+          isDragging = true;
+          lastPointerX = onlyTouch.clientX;
+          lastPointerY = onlyTouch.clientY;
+          lastPinchDist = null;
+        } else if (activeTouches.size === 2) {
+          isDragging = false;
+          const pts = Array.from(activeTouches.values());
+          lastPinchDist = getTouchDistance(pts[0], pts[1]);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener("touchmove", (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          if (activeTouches.has(t.identifier)) {
+            activeTouches.set(t.identifier, { clientX: t.clientX, clientY: t.clientY });
+          }
+        }
+
+        if (activeTouches.size === 1 && isDragging) {
+          const onlyTouch = activeTouches.values().next().value;
+          const dx = onlyTouch.clientX - lastPointerX;
+          const dy = onlyTouch.clientY - lastPointerY;
+          lastPointerX = onlyTouch.clientX;
+          lastPointerY = onlyTouch.clientY;
+
+          state.yaw -= dx * 0.007;
+          state.pitch = clamp(state.pitch + dy * 0.007, -1.5, 1.5);
+        } else if (activeTouches.size === 2) {
+          const pts = Array.from(activeTouches.values());
+          const newDist = getTouchDistance(pts[0], pts[1]);
+          if (lastPinchDist && lastPinchDist > 0) {
+            const zoomRatio = lastPinchDist / newDist;
+            state.camDist = clamp(state.camDist * zoomRatio, 1.35, 8.0);
+          }
+          lastPinchDist = newDist;
+        }
+      }, { passive: false });
+
+      function handleTouchEnd(e) {
+        for (const t of e.changedTouches) {
+          activeTouches.delete(t.identifier);
+        }
+        if (activeTouches.size === 1) {
+          const remaining = activeTouches.values().next().value;
+          isDragging = true;
+          lastPointerX = remaining.clientX;
+          lastPointerY = remaining.clientY;
+          lastPinchDist = null;
+        } else if (activeTouches.size === 0) {
+          isDragging = false;
+          lastPinchDist = null;
+        }
+      }
+
+      canvas.addEventListener("touchend", handleTouchEnd);
+      canvas.addEventListener("touchcancel", handleTouchEnd);
+
+      // =========================================================================
+      // Render Loop & FPS Counter
+      // =========================================================================
+      let frameCount = 0;
+      let lastFpsTime = performance.now();
+
+      function render(now) {
+        resizeCanvas();
+
+        // Update FPS display every 250ms
+        frameCount++;
+        const elapsed = now - lastFpsTime;
+        if (elapsed >= 250) {
+          const fps = (frameCount * 1000.0) / elapsed;
+          fpsDisplay.textContent = `${fps.toFixed(1).padStart(5, " ")} FPS`;
+          frameCount = 0;
+          lastFpsTime = now;
+        }
+
+        // Compute Z-up camera orbit basis vectors (matching Python implementation)
+        const cp = Math.cos(state.pitch);
+        const ro = [
+          state.camDist * cp * Math.cos(state.yaw),
+          state.camDist * cp * Math.sin(state.yaw),
+          state.camDist * Math.sin(state.pitch)
+        ];
+
+        const forward = normalizeVec3([-ro[0], -ro[1], -ro[2]]);
+        const right = normalizeVec3(crossVec3(forward, [0.0, 0.0, 1.0]));
+        const up = crossVec3(right, forward);
+
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+
+        gl.uniform2f(uniforms.u_resolution, canvas.width, canvas.height);
+        gl.uniform3f(uniforms.u_ro, ro[0], ro[1], ro[2]);
+        gl.uniform3f(uniforms.u_forward, forward[0], forward[1], forward[2]);
+        gl.uniform3f(uniforms.u_right, right[0], right[1], right[2]);
+        gl.uniform3f(uniforms.u_up, up[0], up[1], up[2]);
+        gl.uniform1f(uniforms.u_power, state.power);
+        gl.uniform1f(uniforms.u_eps, getEps());
+        gl.uniform1f(uniforms.u_alpha, (state.alphaDeg * Math.PI) / 180.0);
+        gl.uniform1f(uniforms.u_beta, (state.betaDeg * Math.PI) / 180.0);
+        gl.uniform1f(uniforms.u_shade, state.shade);
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        requestAnimationFrame(render);
+      }
+
+      window.onload = function () {
+        requestAnimationFrame(render);
+      };
+    })();
+  </script>
+</body>
+</html>
