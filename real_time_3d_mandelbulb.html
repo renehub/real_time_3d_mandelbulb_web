@@ -1,1016 +1,1677 @@
 <!DOCTYPE html>
+<!-- 
+
+code by DeepSeek-V4.1-Flash-1017-GGUF/Maya-XS
+fractal formulas from: https://github.com/buddhi1980/mandelbulber2/tree/master/mandelbulber2/formula/ui
+Thanks buddhi1980!
+
+// -->
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Real-Time 3D Mandelbulb (WebGL2)</title>
-  <style>
-    :root {
-      --hud-bg: rgba(15, 18, 28, 0.78);
-      --hud-border: rgba(90, 110, 150, 0.55);
-      --text-main: rgb(235, 240, 250);
-      --text-label: rgb(210, 220, 235);
-      --text-hint: rgb(150, 165, 190);
-      --track-bg: rgb(70, 80, 105);
-      --thumb-fill: rgb(240, 245, 255);
-      --accent-power: #5fafff;
-      --accent-eps: #ffaf5f;
-      --accent-alpha: #82e69b;
-      --accent-beta: #d791ff;
-      --accent-shade: #ff6b8b;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background-color: #080a14;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
-      touch-action: none;
-    }
-
-    #gl-canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      cursor: grab;
-    }
-
-    #gl-canvas:active {
-      cursor: grabbing;
-    }
-
-    /* Glassmorphic HUD matching Python overlay */
-    #hud {
-      position: fixed;
-      top: 16px;
-      left: 16px;
-      width: 336px;
-      max-width: calc(100vw - 32px);
-      background: var(--hud-bg);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--hud-border);
-      border-radius: 10px;
-      padding: 12px 16px 12px 16px;
-      color: var(--text-main);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-      transition: opacity 0.2s ease, transform 0.2s ease;
-      z-index: 10;
-    }
-
-    #hud.hidden {
-      opacity: 0;
-      pointer-events: none;
-      transform: translateY(-8px);
-    }
-
-    .hud-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 0.01em;
-    }
-
-    .fps-badge {
-      font-variant-numeric: tabular-nums;
-      color: var(--text-main);
-    }
-
-    .slider-group {
-      margin-bottom: 12px;
-    }
-
-    .slider-label-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 13.5px;
-      color: var(--text-label);
-      margin-bottom: 5px;
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* Custom Range Slider */
-    input[type="range"] {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 100%;
-      height: 16px;
-      background: transparent;
-      cursor: pointer;
-      outline: none;
-    }
-
-    /* Track styling dynamically updated via JS linear-gradient */
-    input[type="range"]::-webkit-slider-runnable-track {
-      width: 100%;
-      height: 4px;
-      border-radius: 2px;
-    }
-
-    input[type="range"]::-moz-range-track {
-      width: 100%;
-      height: 4px;
-      border-radius: 2px;
-    }
-
-    /* Thumb styling */
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: var(--thumb-fill);
-      margin-top: -5px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-      transition: transform 0.1s ease;
-    }
-
-    input[type="range"]::-moz-range-thumb {
-      width: 14px;
-      height: 14px;
-      border: none;
-      border-radius: 50%;
-      background: var(--thumb-fill);
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-      transition: transform 0.1s ease;
-    }
-
-    input[type="range"]:hover::-webkit-slider-thumb,
-    input[type="range"]:active::-webkit-slider-thumb {
-      transform: scale(1.18);
-    }
-
-    input[type="range"]:hover::-moz-range-thumb,
-    input[type="range"]:active::-moz-range-thumb {
-      transform: scale(1.18);
-    }
-
-    .hud-footer {
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid rgba(90, 110, 150, 0.25);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .hud-hint {
-      font-size: 11.5px;
-      color: var(--text-hint);
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .hud-actions {
-      display: flex;
-      gap: 8px;
-    }
-
-    .hud-btn {
-      flex: 1;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(130, 155, 200, 0.35);
-      color: var(--text-label);
-      font-family: inherit;
-      font-size: 11.5px;
-      padding: 5px 8px;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-    }
-
-    .hud-btn:hover {
-      background: rgba(255, 255, 255, 0.14);
-      border-color: rgba(160, 185, 230, 0.65);
-      color: #ffffff;
-    }
-
-    .hud-btn:active {
-      transform: translateY(1px);
-    }
-
-    /* Floating pill button when HUD is hidden */
-    #show-hud-pill {
-      position: fixed;
-      top: 16px;
-      left: 16px;
-      background: var(--hud-bg);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid var(--hud-border);
-      color: var(--text-label);
-      font-family: inherit;
-      font-size: 12px;
-      padding: 7px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      z-index: 9;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s ease, background 0.15s ease;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-    }
-
-    #show-hud-pill.visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    #show-hud-pill:hover {
-      background: rgba(28, 34, 52, 0.9);
-      color: #ffffff;
-    }
-
-    /* Fallback error message box */
-    #error-box {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: #0c0f1a;
-      color: #f87171;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      text-align: center;
-      z-index: 50;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fractal Raymarcher — IQv2 / Benesi / Benesi Pwr2 / Xeno / Riemann / Msltoe / Aexion4D / Bristorbrot</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #05070c; }
+  body { font-family: Consolas, "DejaVu Sans Mono", monospace; }
+  #c { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: grab; }
+  #c:active { cursor: grabbing; }
+  #hud {
+    position: fixed; left: 16px; top: 16px;
+    width: 380px; padding: 10px 14px 10px; border-radius: 10px;
+    background: rgba(15, 18, 28, 0.85);
+    border: 1px solid rgba(90, 110, 150, 0.55);
+    color: #d2dceb; font-size: 12px; line-height: 1.3;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-user-select: none; user-select: none;
+    max-height: calc(100vh - 32px); overflow-y: auto;
+  }
+  #hud.hidden { display: none; }
+  .title { display: flex; justify-content: space-between; align-items: baseline;
+           font-size: 13px; color: #ebf0fa; letter-spacing: .02em; }
+  .title .fps { color: #9fe0ff; font-size: 12px; }
+  .fractal-select { display: flex; margin-top: 8px; }
+  .fractal-select select {
+    width: 100%; padding: 6px 24px 6px 8px; border-radius: 6px;
+    background-color: rgba(30, 40, 55, 0.7);
+    border: 1px solid rgba(120, 140, 175, 0.5); color: #ebf6ff;
+    font: 12px Consolas, monospace; letter-spacing: .02em; cursor: pointer; outline: none;
+    -webkit-appearance: none; appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, #7d92b3 50%),
+                      linear-gradient(135deg, #7d92b3 50%, transparent 50%);
+    background-position: calc(100% - 14px) center, calc(100% - 8px) center;
+    background-size: 6px 6px, 6px 6px; background-repeat: no-repeat;
+  }
+  .fractal-select select:hover { background-color: rgba(50, 65, 90, 0.75); }
+  .fractal-select select:focus { border-color: rgba(95, 175, 255, 0.85); }
+  .row { margin-top: 8px; }
+  .head { display: flex; justify-content: space-between; align-items: center;
+          font-size: 12px; color: #aebbd4; }
+  .head .right { display: flex; align-items: center; gap: 6px; }
+  .head .val { color: #eef4ff; letter-spacing: .02em; }
+  .anim { display: flex; align-items: center; gap: 4px; }
+  .anim-chk { width: 12px; height: 12px; accent-color: var(--accent, #5fafff);
+    cursor: pointer; margin: 0; flex-shrink: 0; }
+  .anim-speed {
+    display: none; width: 58px; height: 15px; padding: 0 4px;
+    font: 11px Consolas, monospace;
+    background: rgba(20, 30, 45, 0.7); color: #c8d8e8;
+    border: 1px solid rgba(120, 140, 175, 0.35); border-radius: 3px;
+    text-align: right; -webkit-appearance: none; appearance: none; outline: none;
+  }
+  .anim.on .anim-speed { display: inline-block; }
+  .row input[type="range"] { -webkit-appearance: none; appearance: none;
+    display: block; width: 100%; height: 16px; margin: 2px 0 0; padding: 0;
+    background: transparent; cursor: pointer; }
+  .row input[type="range"]:focus { outline: none; }
+  .row input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 2px;
+    background: linear-gradient(to right,
+      var(--accent, #5fafff) 0%, var(--accent, #5fafff) var(--pct, 0%),
+      #465063 var(--pct, 0%), #465063 100%);
+  }
+  .row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 13px; height: 13px;
+    border-radius: 50%; background: #f0f5ff; margin-top: -4.5px;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+  }
+  .row input[type="range"]::-moz-range-track {
+    height: 4px; border-radius: 2px; background: #465063; }
+  .row input[type="range"]::-moz-range-progress {
+    height: 4px; border-radius: 2px; background: var(--accent, #5fafff); }
+  .row input[type="range"]::-moz-range-thumb {
+    width: 13px; height: 13px; border: none; border-radius: 50%; background: #f0f5ff; }
+  .row.check label { display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: #aebbd4; cursor: pointer; }
+  .row.check input[type="checkbox"] {
+    accent-color: var(--accent, #5fafff); width: 16px; height: 16px;
+    cursor: pointer; margin: 0; }
+  .row.check .lblname { color: #dce6f4; }
+  .row.check .lblval { margin-left: auto; color: #eef4ff; font-size: 11px; letter-spacing: .02em; }
+  .hint { margin-top: 10px; font-size: 11px; color: #96a5be; letter-spacing: .01em; }
+  .warn {
+    margin-top: 8px; font-size: 11px; color: #ffcf7a;
+    padding: 6px 8px; border-radius: 6px;
+    background: rgba(60, 40, 10, 0.35);
+    border: 1px solid rgba(255, 190, 90, 0.25); letter-spacing: .01em;
+  }
+  .warn.hidden { display: none; }
+  #err { display: none; position: fixed; inset: 0; padding: 24px;
+    color: #ffd0d0; background: #0a0c12; font: 13px/1.5 Consolas, monospace;
+    white-space: pre-wrap; overflow: auto; }
+  @media (max-width: 460px) { #hud { width: calc(100vw - 32px); } }
+</style>
 </head>
 <body>
-  <canvas id="gl-canvas"></canvas>
+<canvas id="c"></canvas>
 
-  <!-- Floating toggle pill shown when HUD is hidden -->
-  <button id="show-hud-pill" type="button" title="Show HUD (H)">Show HUD [H]</button>
+<div id="hud">
+  <div class="title"><span>Fractal Raymarcher</span><span class="fps" id="fps">-- FPS</span></div>
 
-  <!-- Glassmorphic HUD Overlay -->
-  <aside id="hud" aria-label="Mandelbulb Controls">
-    <div class="hud-header">
-      <span>Mandelbulb</span>
-      <span id="fps-display" class="fps-badge">60.0 FPS</span>
-    </div>
-
-    <!-- Power Slider -->
-    <div class="slider-group">
-      <div class="slider-label-row">
-        <span>Power:</span>
-        <span id="val-power">8.00</span>
-      </div>
-      <input id="slider-power" type="range" min="2.0" max="16.0" step="0.01" value="8.0" data-accent="#5fafff" />
-    </div>
-
-    <!-- Epsilon Slider (log scale 1e-4 to 1e-2 via t in [0, 1]) -->
-    <div class="slider-group">
-      <div class="slider-label-row">
-        <span>Eps:</span>
-        <span id="val-eps">0.00100</span>
-      </div>
-      <input id="slider-eps" type="range" min="0.0" max="1.0" step="0.001" value="0.5" data-accent="#ffaf5f" />
-    </div>
-
-    <!-- Alpha Slider -->
-    <div class="slider-group">
-      <div class="slider-label-row">
-        <span>Alpha:</span>
-        <span id="val-alpha">+0.0 deg</span>
-      </div>
-      <input id="slider-alpha" type="range" min="-180.0" max="180.0" step="0.1" value="0.0" data-accent="#82e69b" />
-    </div>
-
-    <!-- Beta Slider -->
-    <div class="slider-group">
-      <div class="slider-label-row">
-        <span>Beta:</span>
-        <span id="val-beta">+0.0 deg</span>
-      </div>
-      <input id="slider-beta" type="range" min="-180.0" max="180.0" step="0.1" value="0.0" data-accent="#d791ff" />
-    </div>
-
-    <!-- Shadow & Depth Shading Slider -->
-    <div class="slider-group">
-      <div class="slider-label-row">
-        <span>Shading:</span>
-        <span id="val-shade">100%</span>
-      </div>
-      <input id="slider-shade" type="range" min="0.0" max="1.0" step="0.01" value="1.0" data-accent="#ff6b8b" />
-    </div>
-
-    <div class="hud-footer">
-      <div class="hud-hint">Drag: Rotate | Wheel: Zoom | S: Shading | R: Reset | H: HUD</div>
-      <div class="hud-actions">
-        <button id="btn-shade-mode" class="hud-btn" type="button" title="Toggle Enhanced / Classic Shading (S)">Mode: Enhanced</button>
-        <button id="btn-reset" class="hud-btn" type="button" title="Reset Camera & Parameters (R)">Reset [R]</button>
-        <button id="btn-toggle-hud" class="hud-btn" type="button" title="Hide HUD (H)">Hide [H]</button>
-      </div>
-    </div>
-  </aside>
-
-  <!-- WebGL2 Error Fallback -->
-  <div id="error-box">
-    <div>
-      <h2 style="margin-bottom: 8px; font-size: 18px;">WebGL2 Initialization Error</h2>
-      <p id="error-text" style="color: #cbd5e1; font-size: 14px;"></p>
-    </div>
+  <div class="fractal-select">
+    <select id="fractalSelect" aria-label="Fractal type">
+      <option value="0">Mandelbulb IQv2</option>
+      <option value="1">Benesi (Julia)</option>
+      <option value="2">Xenodreambuie V2</option>
+      <option value="3">Riemann-Sphere Hobold (Multi)</option>
+      <option value="4">Msltoe Toroidal V2</option>
+      <option value="5">Riemann-Sphere Hobold (Power 8)</option>
+      <option value="6">Aexion Quadray 4D V2</option>
+      <option value="7">Benesi Pwr2 Mandelbulb</option>
+      <option value="8">Bristorbrot 4D</option>
+    </select>
   </div>
 
-  <script>
-    (function () {
-      "use strict";
+  <div id="rows"></div>
 
-      // =========================================================================
-      // GLSL Shaders 
-      // =========================================================================
-      const RAYMARCH_VERTEX_SHADER = `#version 300 es
-        precision highp float;
-        in vec2 in_pos;
-        void main() {
-          gl_Position = vec4(in_pos, 0.0, 1.0);
+  <div id="riemWarn" class="warn hidden">
+    Riemann-Sphere Hobold: bailout &lt; 2.5 for hybrid orbits.
+  </div>
+  <div id="msWarn" class="warn hidden">
+    Msltoe Toroidal: phi-power ≈ power, minR ≈ 0.4–0.6. Bailout 4–8, iter 24+.
+  </div>
+  <div id="riem8Warn" class="warn hidden">
+    Riemann-Pow8: three doublings per iso-plane = fixed power 8. Bailout &lt; 2.5.
+    Mandelbrot mode ON = canonical structure.
+  </div>
+  <div id="axWarn" class="warn hidden">
+    Aexion4D: "initial z = quadray z" + cadd=0 + cpixel scale (1,1,1,1) gives
+    Mandelbulb-like set. Keep analytic DE OFF.
+  </div>
+  <div id="benpWarn" class="warn hidden">
+    Benesi Pwr2 Mandelbulb: needs Mag Transform T1 + Benesi Original both enabled
+    to form the canonical Mandie. Bailout 4–8, iter 32, step 0.45.
+  </div>
+  <div id="bsWarn" class="warn hidden">
+    Bristorbrot 4D: the pixel c is added each iteration. If it collapses to a
+    sphere, raise bailout to 4–8 and enable the addition constant (0.1–0.3).
+  </div>
+
+  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: HUD · 1-9: Fractal · ✓ anim · ✓ Shadows · speed = range/sec</div>
+</div>
+
+<div id="err"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  const canvas   = document.getElementById('c');
+  const hudEl    = document.getElementById('hud');
+  const fpsEl    = document.getElementById('fps');
+  const rowsEl   = document.getElementById('rows');
+  const errEl    = document.getElementById('err');
+  const selectEl = document.getElementById('fractalSelect');
+  const riemWarn = document.getElementById('riemWarn');
+  const msWarn   = document.getElementById('msWarn');
+  const riem8Warn = document.getElementById('riem8Warn');
+  const axWarn   = document.getElementById('axWarn');
+  const benpWarn = document.getElementById('benpWarn');
+  const bsWarn   = document.getElementById('bsWarn');
+
+  function fail(msg) { errEl.style.display = 'block'; errEl.textContent = msg; hudEl.style.display = 'none'; }
+
+  let gl = null;
+  try {
+    gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false,
+      stencil: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
+  } catch (e) { gl = null; }
+  if (!gl) { fail('WebGL2 is not available in this browser.'); return; }
+
+  /* ------------------------------------------------------------------
+     VERTEX + FRAGMENT SHADERS
+     ------------------------------------------------------------------ */
+
+  const VERT_SHADER = `#version 300 es
+void main() {
+    vec2 p = vec2(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0);
+    gl_Position = vec4(p, 0.0, 1.0);
+}`;
+
+  const FRAG_SHADER = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+
+uniform vec2  u_resolution;
+uniform vec3  u_ro, u_forward, u_right, u_up;
+uniform int   u_fractal;
+uniform float u_power;
+uniform float u_wo_scale, u_wi_scale, u_zz_scale;
+uniform float u_eps;
+uniform int   u_max_iter, u_max_steps;
+uniform float u_bailout;
+uniform int   u_shadowsEnabled;
+
+uniform vec3  u_offset;
+uniform float u_xeno_alpha, u_xeno_beta, u_xeno_sA, u_xeno_sB;
+uniform float u_xeno_expOff, u_xeno_scaleC;
+uniform vec3  u_xeno_offset;
+
+uniform float u_riem_scale, u_riem_offA, u_riem_offB, u_riem_angleDeg;
+uniform int   u_riem_cntDXY, u_riem_cntTXY, u_riem_cntDYZ, u_riem_cntTYZ;
+uniform int   u_riem_enX, u_riem_enX2, u_riem_enY, u_riem_enY2;
+uniform vec3  u_riem_adC;
+uniform mat3  u_riem_rotMat;
+uniform int   u_riem_rotEnabled, u_riem_analyticDE;
+uniform float u_riem_deOffset, u_riem_deScale;
+
+uniform float u_riem8_scale, u_riem8_offA, u_riem8_offB, u_riem8_angleDeg;
+uniform vec3  u_riem8_adC;
+uniform mat3  u_riem8_rotMat;
+uniform int   u_riem8_rotEnabled, u_riem8_analyticDE, u_riem8_mandelbrotMode;
+uniform float u_riem8_deOffset, u_riem8_deScale;
+
+uniform float u_ms_power, u_ms_phiPower, u_ms_minR, u_ms_scaleB;
+uniform float u_ms_offsetR, u_ms_scaleNeg1;
+uniform float u_ms_anDEscale1, u_ms_anDEoff0;
+uniform vec3  u_ms_scale3D;
+uniform int   u_ms_startD, u_ms_stopD, u_ms_startB, u_ms_stopB;
+uniform float u_ms_sphOffset, u_ms_sphScale;
+uniform int   u_ms_preEnabled, u_ms_asinMode, u_ms_rrMode, u_ms_sqrtRr;
+uniform int   u_ms_swap, u_ms_sphEnabled, u_ms_customDE;
+
+uniform int   u_ax_initQuadray, u_ax_absFirst;
+uniform float u_ax_cadd;
+uniform vec4  u_ax_domainOffset;
+uniform float u_ax_scale;
+uniform vec4  u_ax_cpixel;
+uniform float u_ax_anDEscale, u_ax_anDEoff0;
+
+uniform int u_b_prismEnabled, u_b_t1Enabled, u_b_t1RotEnabled;
+uniform int u_b_benOriginalEnabled, u_b_treeEnabled, u_b_altSwapEnabled;
+uniform int u_b_cylEnabled, u_b_juliaModeEnabled;
+uniform int u_b_rot2Enabled, u_b_anDEEnabled;
+uniform int u_b_startP, u_b_stopP, u_b_startT1, u_b_stopT1;
+uniform int u_b_startF, u_b_stopF, u_b_startC, u_b_stopC;
+uniform int u_b_startD, u_b_stopD, u_b_startE, u_b_stopE;
+uniform float u_b_dotScale;
+uniform vec3  u_b_mult000, u_b_scale222, u_b_off200;
+uniform vec3  u_b_multA, u_b_mult100, u_b_off000;
+uniform float u_b_scaleA1, u_b_scale1, u_b_scaleC1;
+uniform float u_b_rot1A, u_b_rot1B, u_b_rot1G;
+uniform float u_b_rot2A, u_b_rot2B, u_b_rot2G;
+uniform float u_b_anDEscale, u_b_anDEoff;
+
+uniform vec4 u_bs_adc;
+
+const float SQRT_1_2 = 0.70710678;
+const float SQRT_1_3 = 0.57735027;
+const float SQRT_2_3 = 0.81649658;
+const float SQRT_3   = 1.73205081;
+const float SQRT_3_4 = 0.86602540;
+
+vec3 rot3D(vec3 v, float aDeg, float bDeg, float gDeg) {
+    float a = aDeg * 0.01745329252;
+    float b = bDeg * 0.01745329252;
+    float g = gDeg * 0.01745329252;
+    float ca = cos(a), sa = sin(a);
+    float cb = cos(b), sb = sin(b);
+    float cg = cos(g), sg = sin(g);
+    mat3 M = mat3(
+        cg*cb,            sg*cb,             -sb,
+        cg*sb*sa - sg*ca, sg*sb*sa + cg*ca,  cb*sa,
+        cg*sb*ca + sg*sa, sg*sb*ca - cg*sa,  cb*ca);
+    return M * v;
+}
+
+/* ===================== IQv2 DE ===================== */
+float mandelbulbIqV2DE(vec3 pos, out float trap) {
+    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        r = length(z);
+        if (r > u_bailout) break;
+        float r_safe = max(r, 1e-6);
+        trap = min(trap, r_safe);
+        float wi = (abs(z.x) + abs(z.y) > 1e-7) ? atan(z.x, z.y) : 0.0;
+        float wo = acos(clamp(z.z / r_safe, -1.0, 1.0));
+        float wr = pow(r_safe, u_power);
+        wo = wo * u_power * u_wo_scale;
+        wi = wi * u_power * u_wi_scale;
+        float swo = sin(wo);
+        z.x = swo * sin(wi);
+        z.z = cos(wo);
+        z.y = swo * cos(wi);
+        z *= wr;
+        dr = pow(r_safe, u_power - 1.0) * dr * u_power + 1.0;
+        z.z *= u_zz_scale;
+        z += pos;
+    }
+    float r_safe = max(r, 1e-6);
+    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+}
+
+/* ===================== Benesi ===================== */
+float benesiDE(vec3 pos, out float trap) {
+    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        r = length(z);
+        if (r > u_bailout) break;
+        float r_safe = max(r, 1e-6);
+        trap = min(trap, r_safe);
+        dr = dr * 2.0 * r_safe + 1.0;
+        vec3 zz = z * z;
+        float r1 = zz.y + zz.z;
+        float tp = sqrt(max(r1, 1e-12));
+        vec3 t;
+        if (z.x < tp) t.x = zz.x - r1 + u_offset.x;
+        else          t.x = -zz.x + r1 - u_offset.x;
+        float f = -1.0 / tp * 2.0 * abs(z.x);
+        t.y = f * (zz.y - zz.z) + u_offset.y;
+        t.z = f * 2.0 * z.y * z.z + u_offset.z;
+        z = t;
+    }
+    float r_safe = max(r, 1e-6);
+    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+}
+
+/* ===================== Xenodreambuie ===================== */
+float xenodreambuieDE(vec3 pos, out float trap) {
+    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        r = length(z);
+        if (r > u_bailout) break;
+        float r_safe = max(r, 1e-6);
+        trap = min(trap, r_safe);
+        float th = (asin(clamp(z.z / r_safe, -1.0, 1.0)) + u_xeno_beta) * u_power * u_xeno_sA;
+        float ph = (atan(z.y, z.x) + u_xeno_alpha) * u_power * u_xeno_sB;
+        float rp = pow(r_safe, u_power - u_xeno_expOff);
+        dr = rp * dr * abs(u_power) + 1.0;
+        if (cos(th) < 0.0) ph += 3.14159265358979;
+        rp *= r_safe;
+        float ct = cos(th);
+        z.x = ct * cos(ph) * rp;
+        z.y = ct * sin(ph) * rp;
+        z.z = sin(th)  * rp;
+        z += u_xeno_offset;
+        z *= u_xeno_scaleC;
+        dr *= abs(u_xeno_scaleC);
+    }
+    float r_safe = max(r, 1e-6);
+    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+}
+
+/* ===================== Riemann-Multi ===================== */
+float riemannHoboldDE(vec3 pos, out float trap) {
+    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        r = length(z);
+        if (r > u_bailout) break;
+        float r_safe = max(r, 1e-6);
+        trap = min(trap, r_safe);
+        z *= u_riem_scale / r_safe;
+        float denXY = (z.y - 2.0)*z.y + z.x*z.x + 1.0;
+        if (abs(denXY) < 1e-9) denXY = (denXY >= 0.0 ? 1e-9 : -1e-9);
+        float Kx  = 2.0*z.x*(1.0 - z.y) / denXY;
+        float KyX = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denXY;
+        if (u_riem_enX == 1) {
+            for (int n = 0; n < 32; n++) {
+                if (n >= u_riem_cntDXY) break;
+                float tX = Kx, tY = KyX;
+                Kx  = -2.0*tX*tY; KyX = -(tY*tY - tX*tX);
+            }
         }
-      `;
+        if (u_riem_enX2 == 1) {
+            for (int p = 0; p < 32; p++) {
+                if (p >= u_riem_cntTXY) break;
+                float tX = Kx, tY = KyX;
+                Kx  = -tX*(3.0 - 4.0*tX*tX);
+                KyX = -tY*(4.0*tY*tY - 3.0);
+            }
+        }
+        float n1x = KyX - 1.0 + u_riem_offA;
+        float n1y = -Kx;
+        float denYZ = (z.y - 2.0)*z.y + z.z*z.z + 1.0;
+        if (abs(denYZ) < 1e-9) denYZ = (denYZ >= 0.0 ? 1e-9 : -1e-9);
+        float Kz  = 2.0*z.z*(1.0 - z.y) / denYZ;
+        float KyZ = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denYZ;
+        if (u_riem_enY == 1) {
+            for (int n = 0; n < 32; n++) {
+                if (n >= u_riem_cntDYZ) break;
+                float tZ = Kz, tY = KyZ;
+                Kz  = -2.0*tZ*tY; KyZ = -(tY*tY - tZ*tZ);
+            }
+        }
+        if (u_riem_enY2 == 1) {
+            for (int p = 0; p < 32; p++) {
+                if (p >= u_riem_cntTYZ) break;
+                float tZ = Kz, tY = KyZ;
+                Kz  = -tZ*(3.0 - 4.0*tZ*tZ);
+                KyZ = -tY*(4.0*tY*tY - 3.0);
+            }
+        }
+        float n2y = -Kz;
+        float n2z = KyZ - 1.0 + u_riem_offB;
+        if (u_riem_angleDeg != 0.0) {
+            float beta = u_riem_angleDeg * 0.017453292519943295;
+            float cB = cos(beta), sB = sin(beta);
+            float tX = n1x, tZ = n2z;
+            n1x = tX*cB + tZ*sB;
+            n2z = -tX*sB + tZ*cB;
+        }
+        float num = 2.0 * n1x*n1x * n2z*n2z;
+        float den = (n1x*n1x + n1y*n1y)*n2z*n2z + n1x*n1x*n2y*n2y;
+        if (abs(den) < 1e-9) den = (den >= 0.0 ? 1e-9 : -1e-9);
+        float nt = num / den;
+        z.y = 1.0 - nt;
+        float ry = 1.0 - z.y;
+        z.x = (abs(n1x) < 1e-9) ? 0.0 : n1y * ry / n1x;
+        z.z = (abs(n2z) < 1e-9) ? 0.0 : n2y * ry / n2z;
+        z *= pow(r_safe, u_power * 0.5);
+        z += u_riem_adC;
+        if (u_riem_rotEnabled == 1) z = u_riem_rotMat * z;
+        if (u_riem_analyticDE == 1) {
+            dr = u_riem_deOffset + dr * abs(u_riem_scale) / r_safe;
+            dr *= 8.0 * u_riem_deScale * length(z) / r_safe;
+        } else {
+            float p = u_power * 0.5;
+            if (p > 1e-3) dr = p * pow(r_safe, p - 1.0) * dr + 1.0;
+            else          dr = 1.0;
+        }
+    }
+    float r_safe = max(r, 1e-6);
+    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+}
 
-      const RAYMARCH_FRAGMENT_SHADER = `#version 300 es
-        precision highp float;
-        out vec4 fragColor;
+/* ===================== Riemann-Pow8 ===================== */
+float riemannHoboldPow8DE(vec3 pos, out float trap) {
+    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        r = length(z);
+        if (r > u_bailout) break;
+        float r_safe = max(r, 1e-6);
+        trap = min(trap, r_safe);
+        z *= u_riem8_scale / r_safe;
+        float denXY = (z.y - 2.0)*z.y + z.x*z.x + 1.0;
+        if (abs(denXY) < 1e-9) denXY = (denXY >= 0.0 ? 1e-9 : -1e-9);
+        float Kx = 2.0*z.x*(1.0 - z.y) / denXY;
+        float Ky = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denXY;
+        float K2x = -2.0*Kx*Ky;
+        float K2y = -(Ky*Ky - Kx*Kx);
+        Kx  = -2.0*K2x*K2y; Ky  = -(K2y*K2y - K2x*K2x);
+        K2x = -2.0*Kx*Ky;   K2y = -(Ky*Ky - Kx*Kx);
+        float n1x = K2y - 1.0 + u_riem8_offA;
+        float n1y = -K2x;
+        float denYZ = (z.y - 2.0)*z.y + z.z*z.z + 1.0;
+        if (abs(denYZ) < 1e-9) denYZ = (denYZ >= 0.0 ? 1e-9 : -1e-9);
+        float Kz  = 2.0*z.z*(1.0 - z.y) / denYZ;
+        float Kyz = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denYZ;
+        float K2z  = -2.0*Kz*Kyz;
+        float K2yz = -(Kyz*Kyz - Kz*Kz);
+        Kz  = -2.0*K2z*K2yz; Kyz  = -(K2yz*K2yz - K2z*K2z);
+        K2z = -2.0*Kz*Kyz;   K2yz = -(Kyz*Kyz - Kz*Kz);
+        float n2y = -K2z;
+        float n2z = K2yz - 1.0 + u_riem8_offB;
+        if (u_riem8_angleDeg != 0.0) {
+            float beta = u_riem8_angleDeg * 0.017453292519943295;
+            float cB = cos(beta), sB = sin(beta);
+            float tX = n1x, tZ = n2z;
+            n1x = tX*cB + tZ*sB;
+            n2z = -tX*sB + tZ*cB;
+        }
+        float num = 2.0 * n1x*n1x * n2z*n2z;
+        float den = (n1x*n1x + n1y*n1y)*n2z*n2z + n1x*n1x*n2y*n2y;
+        if (abs(den) < 1e-9) den = (den >= 0.0 ? 1e-9 : -1e-9);
+        float nt = num / den;
+        z.y = 1.0 - nt;
+        float ry = 1.0 - z.y;
+        z.x = (abs(n1x) < 1e-9) ? 0.0 : n1y * ry / n1x;
+        z.z = (abs(n2z) < 1e-9) ? 0.0 : n2y * ry / n2z;
+        z *= r_safe * r_safe * r_safe * r_safe;
+        vec3 cval = (u_riem8_mandelbrotMode == 1) ? pos : u_riem8_adC;
+        z += cval;
+        if (u_riem8_rotEnabled == 1) z = u_riem8_rotMat * z;
+        if (u_riem8_analyticDE == 1) {
+            dr = u_riem8_deOffset + dr * abs(u_riem8_scale) / r_safe;
+            dr *= 8.0 * u_riem8_deScale * length(z) / r_safe;
+        } else {
+            dr = pow(r_safe, 7.0) * dr * 8.0 + 1.0;
+        }
+    }
+    float r_safe = max(r, 1e-6);
+    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+}
 
-        uniform vec2 u_resolution;
-        uniform vec3 u_ro;
-        uniform vec3 u_forward;
-        uniform vec3 u_right;
-        uniform vec3 u_up;
-        uniform float u_power;
-        uniform float u_eps;
-        uniform float u_alpha;
-        uniform float u_beta;
-        uniform float u_shade;
+/* ===================== Msltoe Toroidal ===================== */
+float msltoeToroidalDE(vec3 pos, out float trap) {
+    vec3 z = pos; float dr = 1.0; float r_cur = 0.0; trap = 1e10;
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        float r0 = length(z);
+        if (r0 > u_bailout) break;
+        float r_safe = max(r0, 1e-6);
+        r_cur = r_safe;
+        float aux_r = r0;
+        if (u_ms_preEnabled == 1 && i >= u_ms_startD && i < u_ms_stopD) {
+            vec3 zs = z * u_ms_scale3D;
+            dr *= length(zs) / max(aux_r, 1e-9);
+            z = zs; r_cur = length(z);
+        }
+        float minR = u_ms_minR;
+        float theta = atan(z.y, z.x);
+        float x1 = minR * cos(theta);
+        float y1 = minR * sin(theta);
+        float dx = z.x - x1, dy = z.y - y1;
+        float rr = dx*dx + dy*dy;
+        float rT = sqrt(rr + z.z*z.z);
+        trap = min(trap, max(rT, 1e-6));
+        float temp = rT;
+        float phi;
+        if (u_ms_asinMode == 0) phi = asin(clamp(z.z / max(temp, 1e-9), -1.0, 1.0));
+        else {
+            float tB = temp;
+            if (u_ms_rrMode == 1 && i >= u_ms_startB && i < u_ms_stopB) tB = (u_ms_sqrtRr == 0) ? rr : sqrt(rr);
+            phi = atan(z.z, max(tB, 1e-9));
+        }
+        float rBlend = rT + (aux_r - rT) * u_ms_offsetR;
+        float rp = pow(max(rBlend, 1e-9), u_ms_power - 1.0) / max(u_ms_scaleB, 1e-9);
+        dr = rp * dr * (u_ms_power + u_ms_anDEoff0) + 1.0;
+        rp *= rBlend;
+        phi *= u_ms_phiPower;
+        theta *= u_ms_power;
+        float ct = cos(theta), st = sin(theta);
+        float cph = cos(phi), sph = sin(phi);
+        if (u_ms_swap == 0) { temp = minR + rp * cph; z.x = temp * ct; z.y = temp * st; }
+        else { temp = rp * cph; z.x = (sign(z.x) * x1 + temp) * ct; z.y = (sign(z.y) * y1 + temp) * st; }
+        z.z = rp * sph;
+        z.z *= u_ms_scaleNeg1;
+        dr *= u_ms_anDEscale1;
+        if (u_ms_sphEnabled == 1) {
+            float zl = length(z);
+            z *= 1.0 - u_ms_sphOffset / max(zl, 1e-9);
+            z *= u_ms_sphScale;
+            dr *= abs(u_ms_sphScale);
+        }
+        z += pos;
+    }
+    float r_safe = max(length(z), 1e-6);
+    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+}
 
-        const int MAX_ITER = 12;
-        const int MAX_STEPS = 128;
-        const float BAILOUT = 2.0;
+/* ===================== Aexion4D ===================== */
+vec4 quadQuad(vec4 z) {
+    vec4 r;
+    float tq = 2.0 * z.w * z.z;
+    r.x = z.x*z.x - z.y*z.y;
+    r.y = tq - r.x;
+    r.x += tq;
+    tq = 2.0 * z.x * z.y;
+    r.z = z.z*z.z - z.w*z.w;
+    r.w = tq - r.z;
+    r.z += tq;
+    return r;
+}
 
-        float mandelbulbDE(vec3 pos, out float trap) {
-          vec3 z = pos;
-          float dr = 1.0;
-          float r = 0.0;
-          trap = 1e10;
+float aexion4dDE(vec3 pos, out float trap) {
+    vec4 z = vec4(0.0);
+    vec4 constC = vec4(0.0);
+    float dr = 1.0;
+    float trapv = 1e10;
+    float rPixel = max(length(pos), 1e-9);
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        float r_cur;
+        if (i == 0) {
+            r_cur = rPixel;
+            if (r_cur > u_bailout) break;
+            trapv = min(trapv, r_cur);
+            vec4 tq = vec4(pos.x + pos.y + pos.z, -pos.x - pos.y + pos.z,
+                           -pos.x + pos.y - pos.z, pos.x - pos.y - pos.z);
+            tq = abs(tq) + vec4(u_ax_cadd) + u_ax_domainOffset;
+            if (u_ax_absFirst == 1) tq = abs(tq);
+            constC = tq * u_ax_cpixel;
+            float t0 = length(tq);
+            if (u_ax_initQuadray == 1) {
+                z = tq;
+                dr *= clamp(t0 / rPixel, 1e-3, 1e3) * u_ax_anDEscale;
+            } else z = vec4(0.0);
+            r_cur = t0;
+        } else {
+            r_cur = length(z);
+            if (r_cur > u_bailout) break;
+            trapv = min(trapv, max(r_cur, 1e-6));
+        }
+        dr = dr * 2.0 * r_cur + 1.0;
+        vec4 q = quadQuad(z);
+        dr = dr * u_ax_scale + u_ax_anDEoff0;
+        z = q + constC;
+    }
+    float rFinal = max(length(z), 1e-6);
+    trap = trapv;
+    return 0.5 * log(rFinal) * rFinal / max(dr, 1e-6);
+}
 
-          for (int i = 0; i < MAX_ITER; i++) {
-            r = length(z);
-            if (r > BAILOUT) break;
+/* ===================== Benesi Pwr2 Mandelbulb ===================== */
+float benesiPwr2MandelbulbDE(vec3 pos, out float trap) {
+    vec4 z = vec4(pos, 0.0);
+    vec4 c = vec4(pos, 0.0);
+    float dr = 1.0;
+    float r = length(pos);
+    float trapv = 1e10;
 
-            float r_safe = max(r, 1e-6);
-            trap = min(trap, r_safe);
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        float zl = length(z);
+        if (zl > u_bailout) break;
+        trapv = min(trapv, max(zl, 1e-6));
 
-            float theta = asin(clamp(z.z / r_safe, -1.0, 1.0)) + u_beta;
-            float phi = ((abs(z.x) + abs(z.y) > 1e-7) ? atan(z.y, z.x) : 0.0) + u_alpha;
-
-            dr = pow(r_safe, u_power - 1.0) * u_power * dr + 1.0;
-
-            float zr = pow(r_safe, u_power);
-            theta *= u_power;
-            phi *= u_power;
-
-            float cosTheta = cos(theta);
-            z = zr * vec3(cosTheta * cos(phi), cosTheta * sin(phi), sin(theta));
-            z += pos;
-          }
-
-          float r_safe = max(r, 1e-6);
-          return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+        if (u_b_prismEnabled == 1 && i >= u_b_startP && i < u_b_stopP) {
+            z.y = abs(z.y);
+            z.z = abs(z.z);
+            float dot1 = (z.x * -SQRT_3_4 + z.y * 0.5) * u_b_dotScale;
+            float t = max(0.0, dot1);
+            z.x -= t * -SQRT_3;
+            z.y = abs(z.y - t);
+            if (z.y > z.z) { float tt = z.y; z.y = z.z; z.z = tt; }
+            z.xyz -= u_b_mult000 * vec3(SQRT_3_4, 1.5, 1.5);
+            if (z.z > z.x) { float tt = z.z; z.z = z.x; z.x = tt; }
+            if (z.x > 0.0) {
+                z.y = max(0.0, z.y);
+                z.z = max(0.0, z.z);
+            }
         }
 
-        vec3 calcNormal(vec3 p, float eps) {
-          float h = max(eps * 0.75, 1e-5);
-          float dummy;
-          const vec2 k = vec2(1.0, -1.0);
-          return normalize(
-            k.xyy * mandelbulbDE(p + k.xyy * h, dummy) +
-            k.yyx * mandelbulbDE(p + k.yyx * h, dummy) +
-            k.yxy * mandelbulbDE(p + k.yxy * h, dummy) +
-            k.xxx * mandelbulbDE(p + k.xxx * h, dummy)
-          );
+        if (u_b_t1Enabled == 1 && i >= u_b_startT1 && i < u_b_stopT1) {
+            float tempXZ = z.x * SQRT_2_3 - z.z * SQRT_1_3;
+            z = vec4(
+                (tempXZ - z.y) * SQRT_1_2,
+                (tempXZ + z.y) * SQRT_1_2,
+                z.x * SQRT_1_3 + z.z * SQRT_2_3,
+                z.w);
+            float tempL = length(z);
+            z = abs(z) * vec4(u_b_scale222.x, u_b_scale222.y, u_b_scale222.z, 1.0);
+            float avgScale = length(z) / max(tempL, 1e-21);
+            dr = dr * avgScale + 1.0;
+            if (u_b_t1RotEnabled == 1) z.xyz = rot3D(z.xyz, u_b_rot1A, u_b_rot1B, u_b_rot1G);
+            tempXZ = (z.y + z.x) * SQRT_1_2;
+            z = vec4(
+                z.z * SQRT_1_3 + tempXZ * SQRT_2_3,
+                (z.y - z.x) * SQRT_1_2,
+                z.z * SQRT_2_3 - tempXZ * SQRT_1_3,
+                z.w);
+            z.xyz -= u_b_off200;
         }
 
-        vec3 cosinePalette(float t) {
-          vec3 a = vec3(0.50, 0.50, 0.50);
-          vec3 b = vec3(0.50, 0.50, 0.50);
-          vec3 c = vec3(1.00, 1.00, 1.00);
-          vec3 d = vec3(0.00, 0.15, 0.35);
-          return a + b * cos(6.2831853 * (c * t + d));
+        if (u_b_benOriginalEnabled == 1 && i >= u_b_startF && i < u_b_stopF) {
+            vec3 zz = vec3(z.x*z.x, z.y*z.y, z.z*z.z);
+            float rrYZ = zz.y + zz.z;
+            float lenYZ = sqrt(max(rrYZ, 1e-21));
+            float temp = zz.x + rrYZ;
+            r = sqrt(temp);
+            dr = dr * 2.0 * r;
+            vec4 newZ = z;
+            temp = zz.x - rrYZ;
+            newZ.x = -sign(c.x) * temp;
+            if (z.x < lenYZ) newZ.x = temp;
+            float rYZ = -1.0 / max(lenYZ, 1e-21) * 2.0 * abs(z.x);
+            newZ.y = rYZ * (zz.y - zz.z);
+            newZ.z = rYZ * 2.0 * z.y * z.z;
+            vec3 addC = vec3(c.x * u_b_multA.x, c.y * u_b_multA.y, c.z * u_b_multA.z);
+            z = newZ + vec4(addC, 0.0);
         }
 
-        // Soft raymarched penumbra shadow along key light direction
-        float calcSoftShadow(vec3 ro, vec3 rd, float mint, float maxt, float k, float eps) {
-          float res = 1.0;
-          float t = mint;
-          float dummy;
-          for (int i = 0; i < 48; i++) {
-            if (t >= maxt) break;
-            float d = mandelbulbDE(ro + rd * t, dummy);
-            if (d < eps * 0.45) return 0.0;
-            res = min(res, k * d / t);
-            t += clamp(d * 0.85, 0.004, 0.18);
-          }
-          return clamp(res, 0.0, 1.0);
+        if (u_b_treeEnabled == 1 && i >= u_b_startC && i < u_b_stopC) {
+            vec3 zz = vec3(z.x*z.x, z.y*z.y, z.z*z.z);
+            r = sqrt(max(zz.x + zz.y + zz.z, 1e-21));
+            dr = r * dr * 2.0 + 1.0;
+            float t = 1.0;
+            float temp = zz.y + zz.z;
+            if (temp > 0.0) t = 2.0 * z.x / sqrt(temp);
+            temp = z.z;
+            z.x = zz.x - zz.y - zz.z;
+            z.y = 2.0 * t * z.y * temp;
+            z.z = t * (zz.y - zz.z);
+            vec4 tempC = vec4(c.x * u_b_mult100.x, c.y * u_b_mult100.y, c.z * u_b_mult100.z, 0.0);
+            if (u_b_altSwapEnabled == 1) {
+                if ((i & 1) == 0) tempC = vec4(tempC.x, tempC.z, tempC.y, tempC.w);
+            } else tempC = vec4(tempC.x, tempC.z, tempC.y, tempC.w);
+            z += tempC;
         }
 
-        // 5-step true SDF ambient occlusion along surface normal
-        float calcSDF_AO(vec3 p, vec3 n) {
-          float occ = 0.0;
-          float sca = 1.0;
-          float dummy;
-          for (int i = 1; i <= 5; i++) {
-            float hr = 0.012 + 0.14 * float(i) / 5.0;
-            float d = mandelbulbDE(p + n * hr, dummy);
-            occ += max(0.0, hr - d) * sca;
-            sca *= 0.68;
-          }
-          return clamp(1.0 - 2.6 * occ, 0.06, 1.0);
+        if (u_b_cylEnabled == 1 && i >= u_b_startD && i < u_b_stopD) {
+            vec4 zw = vec4(
+                z.x * cos(z.y * u_b_scale1),
+                z.x * sin(z.y * u_b_scale1),
+                z.z * u_b_scaleC1,
+                z.w);
+            zw *= u_b_scaleA1;
+            z = zw;
+            dr *= abs(u_b_scaleA1);
         }
 
-        // ACES Filmic Tone Mapping
-        vec3 acesFilm(vec3 x) {
-          return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+        if (u_b_juliaModeEnabled == 1 && i >= u_b_startE && i < u_b_stopE) {
+            z.xyz += u_b_off000;
         }
 
-        void main() {
-          vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
-          vec3 rd = normalize(u_forward * 1.6 + uv.x * u_right + uv.y * u_up);
+        if (u_b_rot2Enabled == 1) z.xyz = rot3D(z.xyz, u_b_rot2A, u_b_rot2B, u_b_rot2G);
 
-          // Background gradient
-          float bgT = clamp(0.5 * (rd.z + 1.0), 0.0, 1.0);
-          vec3 col = mix(vec3(0.03, 0.04, 0.08), vec3(0.12, 0.16, 0.28), bgT);
+        if (u_b_anDEEnabled == 1) dr = dr * u_b_anDEscale + u_b_anDEoff;
+    }
 
-          // Bounding sphere intersection (radius 2.2 covers power >= 2.0)
-          float boundR = 2.2;
-          float b = dot(u_ro, rd);
-          float c = dot(u_ro, u_ro) - boundR * boundR;
-          float disc = b * b - c;
+    float r_final = max(length(z), 1e-6);
+    trap = trapv;
+    return 0.5 * log(r_final) * r_final / max(dr, 1e-6);
+}
 
-          if (disc >= 0.0) {
-            float sqrtDisc = sqrt(disc);
-            float t = max(0.0, -b - sqrtDisc);
-            float tMax = -b + sqrtDisc;
+/* ===================== Bristorbrot 4D ===================== */
+float bristorbrot4dDE(vec3 pos, out float trap) {
+    vec4 z = vec4(pos, 0.0);
+    vec4 c = vec4(pos, 0.0);
+    float dr = 1.0;
+    float trapv = 1e10;
 
-            if (tMax > t) {
-              bool hit = false;
-              float trap = 0.0;
-              int hitSteps = 0;
+    for (int i = 0; i < 32; i++) {
+        if (i >= u_max_iter) break;
+        float r = length(z);
+        if (r > u_bailout) break;
+        trapv = min(trapv, max(r, 1e-6));
 
-              for (int i = 0; i < MAX_STEPS; i++) {
+        dr = dr * 2.0 * r + 1.0;
+
+        float nx = z.x*z.x - z.y*z.y - z.z*z.z - z.w*z.w;
+        float ny = z.y * (2.0*z.x - z.z - z.w);
+        float nz = z.z * (2.0*z.x + z.y - z.w);
+        float nw = z.w * (2.0*z.x + z.y + z.z);
+
+        z = vec4(nx, ny, nz, nw);
+        z += u_bs_adc;
+        z += c;
+    }
+
+    float rFinal = max(length(z), 1e-6);
+    trap = trapv;
+    return 0.5 * log(rFinal) * rFinal / max(dr, 1e-6);
+}
+
+/* ===================== Scene dispatcher ===================== */
+float sceneDE(vec3 p, out float trap) {
+    if (u_fractal == 1) return benesiDE(p, trap);
+    if (u_fractal == 2) return xenodreambuieDE(p, trap);
+    if (u_fractal == 3) return riemannHoboldDE(p, trap);
+    if (u_fractal == 4) return msltoeToroidalDE(p, trap);
+    if (u_fractal == 5) return riemannHoboldPow8DE(p, trap);
+    if (u_fractal == 6) return aexion4dDE(p, trap);
+    if (u_fractal == 7) return benesiPwr2MandelbulbDE(p, trap);
+    if (u_fractal == 8) return bristorbrot4dDE(p, trap);
+    return mandelbulbIqV2DE(p, trap);
+}
+
+vec3 calcNormal(vec3 p, float eps) {
+    float h = max(eps * 0.75, 1e-5);
+    float dummy;
+    const vec2 k = vec2(1.0, -1.0);
+    return normalize(
+        k.xyy * sceneDE(p + k.xyy * h, dummy) +
+        k.yyx * sceneDE(p + k.yyx * h, dummy) +
+        k.yxy * sceneDE(p + k.yxy * h, dummy) +
+        k.xxx * sceneDE(p + k.xxx * h, dummy));
+}
+
+/* Shadow ray march: return 1.0 if unoccluded, 0.0 if the light is blocked.
+   Conservative DE-based stepping from the hit point along the light. */
+float shadowMarch(vec3 startP, vec3 lightDir, float eps) {
+    float t = max(0.02, u_eps * 4.0);
+    float tMax = 4.0;
+    float dummy;
+    for (int i = 0; i < 48; i++) {
+        vec3 q = startP + lightDir * t;
+        float d = sceneDE(q, dummy);
+        if (d < eps) return 0.0;
+        if (d < 0.0) return 0.0;
+        t += max(0.01, d);
+        if (t > tMax) break;
+    }
+    return 1.0;
+}
+
+vec3 cosinePalette(float t) {
+    return vec3(0.50) + vec3(0.50) * cos(6.2831853 * (t + vec3(0.00, 0.15, 0.35)));
+}
+
+void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
+    vec3 rd = normalize(u_forward * 1.6 + uv.x * u_right + uv.y * u_up);
+    float bgT = clamp(0.5 * (rd.z + 1.0), 0.0, 1.0);
+    vec3 col = mix(vec3(0.03, 0.04, 0.08), vec3(0.12, 0.16, 0.28), bgT);
+
+    float boundR = (u_fractal == 4) ? 6.0 : 4.0;
+    float b = dot(u_ro, rd);
+    float cc = dot(u_ro, u_ro) - boundR * boundR;
+    float disc = b * b - cc;
+
+    if (disc >= 0.0) {
+        float sqrtDisc = sqrt(disc);
+        float t = max(0.0, -b - sqrtDisc);
+        float tMax = -b + sqrtDisc;
+
+        float stepScale = 0.75;
+        if (u_fractal == 0) {
+            float maxScale = max(1.0, max(abs(u_zz_scale), max(abs(u_wo_scale), abs(u_wi_scale))));
+            stepScale = 0.80 / maxScale;
+        } else if (u_fractal == 2) stepScale = 0.70;
+        else if (u_fractal == 3) stepScale = 0.55;
+        else if (u_fractal == 4) stepScale = 0.55;
+        else if (u_fractal == 5) stepScale = 0.55;
+        else if (u_fractal == 6) stepScale = 0.45;
+        else if (u_fractal == 7) stepScale = 0.45;
+        else if (u_fractal == 8) stepScale = 0.55;
+
+        if (tMax > t) {
+            bool hit = false; float trap = 0.0; int hitSteps = 0;
+            for (int i = 0; i < 256; i++) {
+                if (i >= u_max_steps) break;
                 vec3 p = u_ro + rd * t;
-                float d = mandelbulbDE(p, trap);
-                if (d < u_eps) {
-                  hit = true;
-                  hitSteps = i;
-                  break;
-                }
-                t += d * 0.85;
+                float d = sceneDE(p, trap);
+                if (d < u_eps) { hit = true; hitSteps = i; break; }
+                if (d > 0.0) t += d * stepScale; else break;
                 if (t > tMax) break;
-              }
-
-              if (hit) {
+            }
+            if (hit) {
                 vec3 p = u_ro + rd * t;
                 vec3 n = calcNormal(p, u_eps);
-
                 vec3 lightDir = normalize(vec3(1.5, -1.0, 2.0));
                 vec3 viewDir = -rd;
                 vec3 halfVec = normalize(lightDir + viewDir);
 
-                float diff = max(dot(n, lightDir), 0.0);
-                float spec = pow(max(dot(n, halfVec), 0.0), 32.0);
-                float stepAO = clamp(1.0 - pow(float(hitSteps) / float(MAX_STEPS), 0.75), 0.1, 1.0);
-
-                float tCol = clamp((trap - 0.35) * 1.4, 0.0, 1.0);
-                vec3 albedo = cosinePalette(tCol);
-
-                // Classic shading (exact Mndlbld1.py formula)
-                vec3 classicCol = albedo * (0.25 * stepAO + 0.85 * diff * stepAO) + 0.35 * spec * stepAO;
-
-                // Enhanced multi-layered 3D shading
-                vec3 enhancedCol = classicCol;
-                if (u_shade > 0.001) {
-                  float sdfAO = calcSDF_AO(p, n);
-                  float ao = mix(stepAO, sdfAO * mix(0.45, 1.0, stepAO), 0.85);
-
-                  float shadow = 1.0;
-                  if (diff > 0.001) {
-                    shadow = calcSoftShadow(p + n * max(u_eps * 2.5, 0.002), lightDir, 0.01, 2.6, 14.0, u_eps);
-                  }
-
-                  // Key light (warm sunlight) modulated by soft raymarched penumbra shadow
-                  vec3 keyColor = vec3(1.12, 1.04, 0.94);
-                  float specSharp = pow(max(dot(n, halfVec), 0.0), 48.0);
-                  float specBroad = pow(max(dot(n, halfVec), 0.0), 12.0);
-                  vec3 keyLight = (albedo * diff * 1.05 + (0.38 * specSharp + 0.10 * specBroad) * mix(vec3(1.0), albedo, 0.25)) * keyColor * shadow;
-
-                  // Cool sky / warm ground hemisphere bounce fill so shadowed folds stay sculpted
-                  float hemi = 0.5 + 0.5 * n.z;
-                  vec3 skyBounce = vec3(0.18, 0.28, 0.46);
-                  vec3 groundBounce = vec3(0.08, 0.06, 0.09);
-                  vec3 fillLight = albedo * mix(groundBounce, skyBounce, hemi) * ao * 0.95;
-
-                  // Subtle back/rim Fresnel light to separate fractal silhouettes
-                  float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 3.5);
-                  vec3 rimDir = normalize(vec3(-1.2, 1.4, 0.8));
-                  float rimWrap = 0.35 + 0.65 * max(dot(n, rimDir), 0.0);
-                  vec3 rimLight = mix(vec3(0.35, 0.58, 0.95), albedo, 0.35) * fresnel * rimWrap * (0.35 + 0.65 * ao) * 0.55;
-
-                  // Subtle deep crevice orbit-trap subsurface glow
-                  float creviceGlow = pow(clamp(1.0 - tCol, 0.0, 1.0), 2.5) * (1.0 - ao);
-                  vec3 sss = albedo * vec3(0.95, 0.55, 0.35) * creviceGlow * 0.32;
-
-                  enhancedCol = acesFilm(keyLight + fillLight + rimLight + sss);
+                float shadowK = 1.0;
+                if (u_shadowsEnabled == 1) {
+                    /* Offset slightly along the normal from the surface, then march
+                       toward the light to check occlusion. */
+                    shadowK = shadowMarch(p + n * u_eps * 4.0, lightDir, u_eps * 3.0);
                 }
 
-                col = mix(classicCol, enhancedCol, u_shade);
-              }
+                float diff = max(dot(n, lightDir), 0.0) * shadowK;
+                float spec = pow(max(dot(n, halfVec), 0.0), 32.0) * shadowK;
+                float ao = clamp(1.0 - pow(float(hitSteps) / 128.0, 0.75), 0.1, 1.0);
+
+                float tCol = clamp((trap - 0.35) * 1.4, 0.0, 1.0);
+                if (u_fractal == 1) tCol = clamp((trap - 0.1) * 0.8, 0.0, 1.0);
+                else if (u_fractal == 2) tCol = clamp((trap - 0.2) * 0.9, 0.0, 1.0);
+                else if (u_fractal == 3) tCol = clamp((trap - 0.1) * 0.55, 0.0, 1.0);
+                else if (u_fractal == 4) tCol = clamp((trap - 0.15) * 0.6, 0.0, 1.0);
+                else if (u_fractal == 5) tCol = clamp((trap - 0.1) * 0.55, 0.0, 1.0);
+                else if (u_fractal == 6) tCol = clamp((trap - 0.1) * 0.6, 0.0, 1.0);
+                else if (u_fractal == 7) tCol = clamp((trap - 0.1) * 0.7, 0.0, 1.0);
+                else if (u_fractal == 8) tCol = clamp((trap - 0.1) * 0.7, 0.0, 1.0);
+
+                vec3 albedo = cosinePalette(tCol);
+                col = albedo * (0.25 * ao + 0.85 * diff * ao) + 0.35 * spec * ao;
             }
-          }
-
-          col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
-          fragColor = vec4(col, 1.0);
         }
-      `;
+    }
+    col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
+    fragColor = vec4(col, 1.0);
+}`;
 
-      // =========================================================================
-      // Vector & Math Utilities
-      // =========================================================================
-      function clamp(val, lo, hi) {
-        return Math.max(lo, Math.min(hi, val));
-      }
+  /* ------------------------------------------------------------------
+     PROGRAM
+     ------------------------------------------------------------------ */
 
-      function normalizeVec3(v) {
-        const len = Math.hypot(v[0], v[1], v[2]);
-        const inv = 1.0 / Math.max(len, 1e-10);
-        return [v[0] * inv, v[1] * inv, v[2] * inv];
-      }
+  function compileShader(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      const log = gl.getShaderInfoLog(sh); gl.deleteShader(sh);
+      throw new Error('Shader compile error:\n' + log);
+    }
+    return sh;
+  }
 
-      function crossVec3(a, b) {
-        return [
-          a[1] * b[2] - a[2] * b[1],
-          a[2] * b[0] - a[0] * b[2],
-          a[0] * b[1] - a[1] * b[0]
-        ];
-      }
+  let prog, U = {};
+  try {
+    const vs = compileShader(gl.VERTEX_SHADER, VERT_SHADER);
+    const fs = compileShader(gl.FRAGMENT_SHADER, FRAG_SHADER);
+    prog = gl.createProgram();
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+    gl.deleteShader(vs); gl.deleteShader(fs);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+      throw new Error('Program link error:\n' + gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
 
-      // =========================================================================
-      // WebGL2 Initialization
-      // =========================================================================
-      const canvas = document.getElementById("gl-canvas");
-      const errorBox = document.getElementById("error-box");
-      const errorText = document.getElementById("error-text");
+    const names = [
+      'u_resolution','u_ro','u_forward','u_right','u_up','u_fractal',
+      'u_power','u_wo_scale','u_wi_scale','u_zz_scale','u_eps',
+      'u_max_iter','u_max_steps','u_bailout','u_shadowsEnabled','u_offset',
+      'u_xeno_alpha','u_xeno_beta','u_xeno_sA','u_xeno_sB',
+      'u_xeno_expOff','u_xeno_scaleC','u_xeno_offset',
+      'u_riem_scale','u_riem_offA','u_riem_offB','u_riem_angleDeg',
+      'u_riem_cntDXY','u_riem_cntTXY','u_riem_cntDYZ','u_riem_cntTYZ',
+      'u_riem_enX','u_riem_enX2','u_riem_enY','u_riem_enY2',
+      'u_riem_adC','u_riem_rotMat','u_riem_rotEnabled',
+      'u_riem_analyticDE','u_riem_deOffset','u_riem_deScale',
+      'u_riem8_scale','u_riem8_offA','u_riem8_offB','u_riem8_angleDeg',
+      'u_riem8_adC','u_riem8_rotMat','u_riem8_rotEnabled',
+      'u_riem8_analyticDE','u_riem8_mandelbrotMode',
+      'u_riem8_deOffset','u_riem8_deScale',
+      'u_ms_power','u_ms_phiPower','u_ms_minR','u_ms_scaleB',
+      'u_ms_offsetR','u_ms_scaleNeg1','u_ms_anDEscale1','u_ms_anDEoff0',
+      'u_ms_scale3D','u_ms_startD','u_ms_stopD','u_ms_startB','u_ms_stopB',
+      'u_ms_sphOffset','u_ms_sphScale',
+      'u_ms_preEnabled','u_ms_asinMode','u_ms_rrMode','u_ms_sqrtRr',
+      'u_ms_swap','u_ms_sphEnabled','u_ms_customDE',
+      'u_ax_initQuadray','u_ax_absFirst','u_ax_cadd',
+      'u_ax_domainOffset','u_ax_scale','u_ax_cpixel',
+      'u_ax_anDEscale','u_ax_anDEoff0',
+      'u_b_prismEnabled','u_b_t1Enabled','u_b_t1RotEnabled',
+      'u_b_benOriginalEnabled','u_b_treeEnabled','u_b_altSwapEnabled',
+      'u_b_cylEnabled','u_b_juliaModeEnabled',
+      'u_b_rot2Enabled','u_b_anDEEnabled',
+      'u_b_startP','u_b_stopP','u_b_startT1','u_b_stopT1',
+      'u_b_startF','u_b_stopF','u_b_startC','u_b_stopC',
+      'u_b_startD','u_b_stopD','u_b_startE','u_b_stopE',
+      'u_b_dotScale','u_b_mult000','u_b_scale222','u_b_off200',
+      'u_b_multA','u_b_mult100','u_b_off000',
+      'u_b_scaleA1','u_b_scale1','u_b_scaleC1',
+      'u_b_rot1A','u_b_rot1B','u_b_rot1G',
+      'u_b_rot2A','u_b_rot2B','u_b_rot2G',
+      'u_b_anDEscale','u_b_anDEoff',
+      'u_bs_adc'
+    ];
+    names.forEach(n => U[n] = gl.getUniformLocation(prog, n));
 
-      function showError(msg) {
-        errorText.textContent = msg;
-        errorBox.style.display = "flex";
-      }
+    gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND);
+  } catch (e) { fail(e.message); return; }
 
-      const gl = canvas.getContext("webgl2", {
-        antialias: false,
-        alpha: false,
-        depth: false,
-        stencil: false,
-        powerPreference: "high-performance"
+  /* ------------------------------------------------------------------
+     PARAMETERS
+     ------------------------------------------------------------------ */
+
+  const params = {
+    power: 8.0, wo_scale: 1.0, wi_scale: 1.0, zz_scale: 1.0,
+    eps_t: 0.5, max_iter: 32, max_steps: 192, bailout: 4.0,
+    shadowsEnabled: false,
+    off_x: 0.300, off_y: 0.300, off_z: 0.300,
+    xeno_alpha: 0.000, xeno_beta: 0.000, xeno_sA: 1.000, xeno_sB: 1.000,
+    xeno_expOff: 1.000, xeno_scaleC: 1.000,
+    xeno_offX: 0.000, xeno_offY: 0.000, xeno_offZ: 0.000,
+    riem_power: 2.0, riem_scale: 1.000, riem_offA: 0.000, riem_offB: 0.000,
+    riem_angle: 0.0,
+    riem_cntDXY: 1, riem_cntTXY: 0, riem_cntDYZ: 1, riem_cntTYZ: 0,
+    riem_cX: 0.500, riem_cY: 0.500, riem_cZ: 0.500,
+    riem_deOff: 1.0, riem_deScale: 1.0,
+    riem_rotA: 0.0, riem_rotB: 0.0, riem_rotG: 0.0,
+    riem_enX: true, riem_enX2: false, riem_enY: true, riem_enY2: false,
+    riem_rotEnabled: false, riem_analyticDE: false,
+    riem8_scale: 0.800, riem8_offA: 0.000, riem8_offB: 0.000, riem8_angle: 0.0,
+    riem8_cX: 0.500, riem8_cY: 0.500, riem8_cZ: 0.500,
+    riem8_deOff: 1.0, riem8_deScale: 1.0,
+    riem8_rotA: 0.0, riem8_rotB: 0.0, riem8_rotG: 0.0,
+    riem8_rotEnabled: false, riem8_analyticDE: false, riem8_mandelbrotMode: true,
+    ms_power: 8.0, ms_phiPower: 8.0, ms_minR: 0.500, ms_scaleB: 1.000,
+    ms_offsetR: 0.000, ms_scaleNeg1: 1.000,
+    ms_anDEscale1: 1.000, ms_anDEoff0: 0.000,
+    ms_scaleX: 1.000, ms_scaleY: 1.000, ms_scaleZ: 1.000,
+    ms_startD: 0, ms_stopD: 32, ms_startB: 0, ms_stopB: 32,
+    ms_sphOffset: 0.000, ms_sphScale: 1.000,
+    ms_preEnabled: false, ms_asinMode: false, ms_rrMode: false, ms_sqrtRr: false,
+    ms_swap: false, ms_sphEnabled: false, ms_customDE: false,
+    ax_initQuadray: true, ax_absFirst: false,
+    ax_cadd: 0.000,
+    ax_offX: 0.000, ax_offY: 0.000, ax_offZ: 0.000, ax_offW: 0.000,
+    ax_scale: 1.000,
+    ax_cpX: 1.000, ax_cpY: 1.000, ax_cpZ: 1.000, ax_cpW: 1.000,
+    ax_anDEscale: 1.000, ax_anDEoff0: 0.000,
+    b_prismEnabled: false, b_t1Enabled: true, b_t1RotEnabled: false,
+    b_benOriginalEnabled: true, b_treeEnabled: false, b_altSwapEnabled: false,
+    b_cylEnabled: false, b_juliaModeEnabled: false,
+    b_rot2Enabled: false, b_anDEEnabled: false,
+    b_dotScale: 1.000,
+    b_mult000X: 1.000, b_mult000Y: 1.000, b_mult000Z: 1.000,
+    b_scale222X: 1.000, b_scale222Y: 1.000, b_scale222Z: 1.000,
+    b_off200X: 0.000, b_off200Y: 0.000, b_off200Z: 0.000,
+    b_multAX: 1.000, b_multAY: 1.000, b_multAZ: 1.000,
+    b_mult100X: 1.000, b_mult100Y: 1.000, b_mult100Z: 1.000,
+    b_off000X: 0.000, b_off000Y: 0.000, b_off000Z: 0.000,
+    b_scaleA1: 1.000, b_scale1: 1.000, b_scaleC1: 1.000,
+    b_rot1A: 0.0, b_rot1B: 0.0, b_rot1G: 0.0,
+    b_rot2A: 0.0, b_rot2B: 0.0, b_rot2G: 0.0,
+    b_anDEscale: 1.000, b_anDEoff: 0.000,
+    bs_adcX: 0.000, bs_adcY: 0.000, bs_adcZ: 0.000, bs_adcW: 0.000
+  };
+
+  let fractalType = 0;
+
+  function getEps() { return Math.pow(10.0, -4.0 + params.eps_t * 2.0); }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  let yaw = -0.68, pitch = 0.35, camDist = 5.0;
+
+  /* ------------------------------------------------------------------
+     SLIDERS / CHECKBOXES
+     ------------------------------------------------------------------ */
+
+  const SLIDERS = [
+    { key:'power',             label:'Power', min:2.0, max:16.0, step:0.1, accent:'#5fafff', fractal:'pwr-shared', fmt:v=>v.toFixed(1) },
+    { key:'riem_power',        label:'Power (pwr8)', min:0.0, max:20.0, step:0.1, accent:'#5fafff', fractal:'pwr-riem', fmt:v=>v.toFixed(1) },
+    { key:'ms_power',          label:'Bulb power', min:0.1, max:16.0, step:0.005, accent:'#5fafff', fractal:'pwr-ms', fmt:v=>v.toFixed(3) },
+    { key:'wo_scale',          label:'wo scale', min:-1.0, max:3.0, step:0.001, accent:'#82e69b', fractal:0, fmt:v=>v.toFixed(3) },
+    { key:'wi_scale',          label:'wi scale', min:-1.0, max:3.0, step:0.001, accent:'#d791ff', fractal:0, fmt:v=>v.toFixed(3) },
+    { key:'zz_scale',          label:'z.z scale', min:-1.0, max:3.0, step:0.001, accent:'#ff7896', fractal:0, fmt:v=>v.toFixed(3) },
+    { key:'eps_t',             label:'Eps', min:0.0, max:1.0, step:0.001, accent:'#ffaf5f', fractal:-1, fmt:() => getEps().toFixed(5) },
+    { key:'max_iter',          label:'Max Iter', min:1, max:32, step:1, accent:'#64e1e1', fractal:-1, fmt:v=>String(Math.round(v)) },
+    { key:'max_steps',         label:'Max Steps', min:16, max:256, step:1, accent:'#f5e169', fractal:-1, fmt:v=>String(Math.round(v)) },
+    { key:'bailout',           label:'Bailout', min:1.0, max:32.0, step:0.001, accent:'#aaa0ff', fractal:-1, fmt:v=>v.toFixed(3) },
+    { key:'off_x',             label:'Offset X (Julia)', min:-2.0, max:2.0, step:0.001, accent:'#ff8080', fractal:1, fmt:v=>v.toFixed(3) },
+    { key:'off_y',             label:'Offset Y (Julia)', min:-2.0, max:2.0, step:0.001, accent:'#80e080', fractal:1, fmt:v=>v.toFixed(3) },
+    { key:'off_z',             label:'Offset Z (Julia)', min:-2.0, max:2.0, step:0.001, accent:'#8080ff', fractal:1, fmt:v=>v.toFixed(3) },
+    { key:'xeno_alpha',        label:'Alpha offset', min:-3.14, max:3.14, step:0.001, accent:'#ffc040', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'xeno_beta',         label:'Beta offset',  min:-3.14, max:3.14, step:0.001, accent:'#ffc040', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'xeno_sA',           label:'Angle scale A', min:0.1, max:2.0, step:0.001, accent:'#e2a0ff', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'xeno_sB',           label:'Angle scale B', min:0.1, max:2.0, step:0.001, accent:'#e2a0ff', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'xeno_expOff',       label:'Exponent offset', min:0.0, max:2.0, step:0.001, accent:'#a0c0ff', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'xeno_scaleC',       label:'Scale C', min:0.1, max:2.0, step:0.001, accent:'#c0ffc0', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'xeno_offX',         label:'Post Offset X', min:-1.0, max:1.0, step:0.001, accent:'#ff8080', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'xeno_offY',         label:'Post Offset Y', min:-1.0, max:1.0, step:0.001, accent:'#80e080', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'xeno_offZ',         label:'Post Offset Z', min:-1.0, max:1.0, step:0.001, accent:'#8080ff', fractal:2, fmt:v=>v.toFixed(3) },
+    { key:'riem_scale',        label:'scale08 (sphere radius)', min:0.1, max:2.0, step:0.001, accent:'#c0e0ff', fractal:3, fmt:v=>v.toFixed(3) },
+    { key:'riem_offA',         label:'offsetA0', min:-1.0, max:1.0, step:0.005, accent:'#ff8080', fractal:3, fmt:v=>v.toFixed(3) },
+    { key:'riem_offB',         label:'offsetB0', min:-1.0, max:1.0, step:0.005, accent:'#8080ff', fractal:3, fmt:v=>v.toFixed(3) },
+    { key:'riem_angle',        label:'Internal rotation (deg)', min:-180, max:180, step:1, accent:'#ffc040', fractal:3, fmt:v=>String(Math.round(v)) },
+    { key:'riem_cntDXY',       label:'int3 (doublingXY)', min:0, max:8, step:1, accent:'#82e69b', fractal:3, fmt:v=>String(Math.round(v)) },
+    { key:'riem_cntTXY',       label:'int3X (triplingXY)', min:0, max:8, step:1, accent:'#a9ffb3', fractal:3, fmt:v=>String(Math.round(v)) },
+    { key:'riem_cntDYZ',       label:'int3Y (doublingYZ)', min:0, max:8, step:1, accent:'#ff7896', fractal:3, fmt:v=>String(Math.round(v)) },
+    { key:'riem_cntTYZ',       label:'int3Z (triplingYZ)', min:0, max:8, step:1, accent:'#ffaab4', fractal:3, fmt:v=>String(Math.round(v)) },
+    { key:'riem_cX',           label:'additionConstant.x', min:-1.5, max:1.5, step:0.001, accent:'#ffb060', fractal:3, fmt:v=>v.toFixed(3) },
+    { key:'riem_cY',           label:'additionConstant.y', min:-1.5, max:1.5, step:0.001, accent:'#b0ff60', fractal:3, fmt:v=>v.toFixed(3) },
+    { key:'riem_cZ',           label:'additionConstant.z', min:-1.5, max:1.5, step:0.001, accent:'#60b0ff', fractal:3, fmt:v=>v.toFixed(3) },
+    { key:'riem_deOff',        label:'analyticDE.offset1', min:0.0, max:5.0, step:0.1, accent:'#e0b0ff', fractal:3, fmt:v=>v.toFixed(2) },
+    { key:'riem_deScale',      label:'analyticDE.scale1', min:0.0, max:5.0, step:0.1, accent:'#e0b0ff', fractal:3, fmt:v=>v.toFixed(2) },
+    { key:'riem_rotA',         label:'Rotation alpha', min:-180, max:180, step:1, accent:'#c8e0ff', fractal:3, fmt:v=>String(Math.round(v)) },
+    { key:'riem_rotB',         label:'Rotation beta', min:-180, max:180, step:1, accent:'#c8e0ff', fractal:3, fmt:v=>String(Math.round(v)) },
+    { key:'riem_rotG',         label:'Rotation gamma', min:-180, max:180, step:1, accent:'#c8e0ff', fractal:3, fmt:v=>String(Math.round(v)) },
+    { key:'riem8_scale',       label:'scale08 (sphere radius)', min:0.1, max:2.0, step:0.001, accent:'#c0e0ff', fractal:5, fmt:v=>v.toFixed(3) },
+    { key:'riem8_offA',        label:'offsetA0 (n1x)', min:-1.0, max:1.0, step:0.005, accent:'#ff8080', fractal:5, fmt:v=>v.toFixed(3) },
+    { key:'riem8_offB',        label:'offsetB0 (n2z)', min:-1.0, max:1.0, step:0.005, accent:'#8080ff', fractal:5, fmt:v=>v.toFixed(3) },
+    { key:'riem8_angle',       label:'Internal rotation', min:-180, max:180, step:1, accent:'#ffc040', fractal:5, fmt:v=>String(Math.round(v)) },
+    { key:'riem8_cX',          label:'additionConstant.x', min:-1.5, max:1.5, step:0.001, accent:'#ffb060', fractal:5, fmt:v=>v.toFixed(3) },
+    { key:'riem8_cY',          label:'additionConstant.y', min:-1.5, max:1.5, step:0.001, accent:'#b0ff60', fractal:5, fmt:v=>v.toFixed(3) },
+    { key:'riem8_cZ',          label:'additionConstant.z', min:-1.5, max:1.5, step:0.001, accent:'#60b0ff', fractal:5, fmt:v=>v.toFixed(3) },
+    { key:'riem8_deOff',       label:'analyticDE.offset1', min:0.0, max:5.0, step:0.1, accent:'#e0b0ff', fractal:5, fmt:v=>v.toFixed(2) },
+    { key:'riem8_deScale',     label:'analyticDE.scale1', min:0.0, max:5.0, step:0.1, accent:'#e0b0ff', fractal:5, fmt:v=>v.toFixed(2) },
+    { key:'riem8_rotA',        label:'Rotation alpha', min:-180, max:180, step:1, accent:'#c8e0ff', fractal:5, fmt:v=>String(Math.round(v)) },
+    { key:'riem8_rotB',        label:'Rotation beta', min:-180, max:180, step:1, accent:'#c8e0ff', fractal:5, fmt:v=>String(Math.round(v)) },
+    { key:'riem8_rotG',        label:'Rotation gamma', min:-180, max:180, step:1, accent:'#c8e0ff', fractal:5, fmt:v=>String(Math.round(v)) },
+    { key:'ms_phiPower',       label:'phi power (pwr8)', min:0.1, max:16.0, step:0.005, accent:'#e0b0ff', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_minR',           label:'Radius (minR05)', min:0.000, max:2.000, step:0.001, accent:'#ffc040', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_scaleB',         label:'Scale (scaleB1)', min:0.010, max:10.0, step:0.001, accent:'#82e69b', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_offsetR',        label:'r − aux.r mix (offsetR0)', min:-1.0, max:1.0, step:0.001, accent:'#64e1e1', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_scaleNeg1',      label:'z.z scale (scaleNeg1)', min:-2.0, max:2.0, step:0.001, accent:'#ff7896', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_anDEscale1',     label:'analyticDE.scale1', min:0.0, max:5.0, step:0.001, accent:'#e0b0ff', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_anDEoff0',       label:'analyticDE.offset0', min:-2.0, max:2.0, step:0.001, accent:'#e0b0ff', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_scaleX',         label:'Pre-scale x', min:-2.0, max:2.0, step:0.001, accent:'#ff8080', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_scaleY',         label:'Pre-scale y', min:-2.0, max:2.0, step:0.001, accent:'#80e080', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_scaleZ',         label:'Pre-scale z', min:-2.0, max:2.0, step:0.001, accent:'#8080ff', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_startD',         label:'Pre-scale start (D)', min:0, max:32, step:1, accent:'#ffaf5f', fractal:4, fmt:v=>String(Math.round(v)) },
+    { key:'ms_stopD',          label:'Pre-scale stop (D1)', min:0, max:32, step:1, accent:'#ffaf5f', fractal:4, fmt:v=>String(Math.round(v)) },
+    { key:'ms_startB',         label:'atan2 start (B)', min:0, max:32, step:1, accent:'#f5e169', fractal:4, fmt:v=>String(Math.round(v)) },
+    { key:'ms_stopB',          label:'atan2 stop (B)', min:0, max:32, step:1, accent:'#f5e169', fractal:4, fmt:v=>String(Math.round(v)) },
+    { key:'ms_sphOffset',      label:'sph offset', min:-2.0, max:2.0, step:0.001, accent:'#ff8080', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ms_sphScale',       label:'sph scale', min:0.0, max:2.0, step:0.001, accent:'#80e080', fractal:4, fmt:v=>v.toFixed(3) },
+    { key:'ax_cadd',           label:'c add', min:-2.0, max:2.0, step:0.001, accent:'#ffac70', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_offX',           label:'Domain offset x', min:-2.0, max:2.0, step:0.001, accent:'#ff8080', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_offY',           label:'Domain offset y', min:-2.0, max:2.0, step:0.001, accent:'#80e080', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_offZ',           label:'Domain offset z', min:-2.0, max:2.0, step:0.001, accent:'#8080ff', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_offW',           label:'Domain offset w', min:-2.0, max:2.0, step:0.001, accent:'#ff9fcf', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_scale',          label:'Scale (scale1)', min:0.1, max:3.0, step:0.001, accent:'#c0e0ff', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_cpX',            label:'cpixel scale x', min:0.0, max:3.0, step:0.001, accent:'#ff8080', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_cpY',            label:'cpixel scale y', min:0.0, max:3.0, step:0.001, accent:'#80e080', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_cpZ',            label:'cpixel scale z', min:0.0, max:3.0, step:0.001, accent:'#8080ff', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_cpW',            label:'cpixel scale w', min:0.0, max:3.0, step:0.001, accent:'#ff9fcf', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_anDEscale',      label:'analyticDE.scale1', min:0.0, max:5.0, step:0.001, accent:'#e0b0ff', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'ax_anDEoff0',       label:'analyticDE.offset0', min:-2.0, max:2.0, step:0.001, accent:'#e0b0ff', fractal:6, fmt:v=>v.toFixed(3) },
+    { key:'b_dotScale',        label:'Prism dot scale', min:-3.0, max:3.0, step:0.001, accent:'#ffc040', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_mult000X',        label:'Prism offset scale x', min:-3.0, max:3.0, step:0.001, accent:'#ff8080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_mult000Y',        label:'Prism offset scale y', min:-3.0, max:3.0, step:0.001, accent:'#80e080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_mult000Z',        label:'Prism offset scale z', min:-3.0, max:3.0, step:0.001, accent:'#8080ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_scale222X',       label:'Mag T1 scale x', min:-3.0, max:3.0, step:0.001, accent:'#ff8080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_scale222Y',       label:'Mag T1 scale y', min:-3.0, max:3.0, step:0.001, accent:'#80e080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_scale222Z',       label:'Mag T1 scale z', min:-3.0, max:3.0, step:0.001, accent:'#8080ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_off200X',         label:'Mag T1 offset x', min:-3.0, max:3.0, step:0.001, accent:'#ff8080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_off200Y',         label:'Mag T1 offset y', min:-3.0, max:3.0, step:0.001, accent:'#80e080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_off200Z',         label:'Mag T1 offset z', min:-3.0, max:3.0, step:0.001, accent:'#8080ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_rot1A',           label:'Mag T1 rot alpha', min:-180, max:180, step:1, accent:'#e0b0ff', fractal:7, fmt:v=>String(Math.round(v)) },
+    { key:'b_rot1B',           label:'Mag T1 rot beta', min:-180, max:180, step:1, accent:'#e0b0ff', fractal:7, fmt:v=>String(Math.round(v)) },
+    { key:'b_rot1G',           label:'Mag T1 rot gamma', min:-180, max:180, step:1, accent:'#e0b0ff', fractal:7, fmt:v=>String(Math.round(v)) },
+    { key:'b_multAX',          label:'Benesi orig cpx mult x', min:-3.0, max:3.0, step:0.001, accent:'#ff8080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_multAY',          label:'Benesi orig cpx mult y', min:-3.0, max:3.0, step:0.001, accent:'#80e080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_multAZ',          label:'Benesi orig cpx mult z', min:-3.0, max:3.0, step:0.001, accent:'#8080ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_mult100X',        label:'PineTree cpx mult x', min:-3.0, max:3.0, step:0.001, accent:'#ff8080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_mult100Y',        label:'PineTree cpx mult y', min:-3.0, max:3.0, step:0.001, accent:'#80e080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_mult100Z',        label:'PineTree cpx mult z', min:-3.0, max:3.0, step:0.001, accent:'#8080ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_scaleA1',         label:'Cylindrical scale A', min:-3.0, max:3.0, step:0.001, accent:'#c0e0ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_scale1',          label:'Cylindrical y mult', min:-3.0, max:3.0, step:0.001, accent:'#82e69b', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_scaleC1',         label:'Cylindrical z scale', min:-3.0, max:3.0, step:0.001, accent:'#ff7896', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_off000X',         label:'Post Offset x', min:-2.0, max:2.0, step:0.001, accent:'#ff8080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_off000Y',         label:'Post Offset y', min:-2.0, max:2.0, step:0.001, accent:'#80e080', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_off000Z',         label:'Post Offset z', min:-2.0, max:2.0, step:0.001, accent:'#8080ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_rot2A',           label:'Post rot alpha', min:-180, max:180, step:1, accent:'#e0b0ff', fractal:7, fmt:v=>String(Math.round(v)) },
+    { key:'b_rot2B',           label:'Post rot beta', min:-180, max:180, step:1, accent:'#e0b0ff', fractal:7, fmt:v=>String(Math.round(v)) },
+    { key:'b_rot2G',           label:'Post rot gamma', min:-180, max:180, step:1, accent:'#e0b0ff', fractal:7, fmt:v=>String(Math.round(v)) },
+    { key:'b_anDEscale',       label:'analyticDE.scale1', min:0.0, max:5.0, step:0.001, accent:'#e0b0ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'b_anDEoff',         label:'analyticDE.offset0', min:-2.0, max:2.0, step:0.001, accent:'#e0b0ff', fractal:7, fmt:v=>v.toFixed(3) },
+    { key:'bs_adcX',           label:'additionConstant0000.x', min:-2.0, max:2.0, step:0.001, accent:'#ff8080', fractal:8, fmt:v=>v.toFixed(3) },
+    { key:'bs_adcY',           label:'additionConstant0000.y', min:-2.0, max:2.0, step:0.001, accent:'#80e080', fractal:8, fmt:v=>v.toFixed(3) },
+    { key:'bs_adcZ',           label:'additionConstant0000.z', min:-2.0, max:2.0, step:0.001, accent:'#8080ff', fractal:8, fmt:v=>v.toFixed(3) },
+    { key:'bs_adcW',           label:'additionConstant0000.w', min:-2.0, max:2.0, step:0.001, accent:'#ff9fcf', fractal:8, fmt:v=>v.toFixed(3) }
+  ];
+
+  const CHECKBOXES = [
+    /* Global — appears for every fractal */
+    { key:'shadowsEnabled', label:'Shadows (raymarch)', accent:'#ffd27f', fractal:'any' },
+    { key:'riem_enX', label:'doublingXY', accent:'#82e69b', fractal:3 },
+    { key:'riem_enX2', label:'triplingXY', accent:'#a9ffb3', fractal:3 },
+    { key:'riem_enY', label:'doublingYZ', accent:'#ff7896', fractal:3 },
+    { key:'riem_enY2', label:'triplingYZ', accent:'#ffaab4', fractal:3 },
+    { key:'riem_rotEnabled', label:'Rotation enabled', accent:'#c8e0ff', fractal:3 },
+    { key:'riem_analyticDE', label:'Analytic DE enabled', accent:'#e0b0ff', fractal:3 },
+    { key:'riem8_rotEnabled', label:'Rotation enabled', accent:'#c8e0ff', fractal:5 },
+    { key:'riem8_analyticDE', label:'Analytic DE enabled', accent:'#e0b0ff', fractal:5 },
+    { key:'riem8_mandelbrotMode', label:'Mandelbrot mode (c = pixel)', accent:'#ffac70', fractal:5 },
+    { key:'ms_preEnabled', label:'Pre-Scale enabled', accent:'#ffaf5f', fractal:4 },
+    { key:'ms_asinMode', label:'asin→atan2 mode', accent:'#f5e169', fractal:4 },
+    { key:'ms_rrMode', label:'rr xy mode', accent:'#64e1e1', fractal:4 },
+    { key:'ms_sqrtRr', label:'sqrt(rr xy) mode', accent:'#82e69b', fractal:4 },
+    { key:'ms_swap', label:'swap', accent:'#ff7896', fractal:4 },
+    { key:'ms_sphEnabled', label:'Spherical offset enabled', accent:'#c8e0ff', fractal:4 },
+    { key:'ms_customDE', label:'customDE', accent:'#e0b0ff', fractal:4 },
+    { key:'ax_initQuadray', label:'initial z = quadray z', accent:'#ffac70', fractal:6 },
+    { key:'ax_absFirst', label:'abs()', accent:'#c8e0ff', fractal:6 },
+    { key:'b_prismEnabled', label:'Prism Shape enabled', accent:'#ffc040', fractal:7 },
+    { key:'b_t1Enabled', label:'Mag Transform T1 enabled', accent:'#a9ffb3', fractal:7 },
+    { key:'b_t1RotEnabled', label:'Mag T1 internal Rotation', accent:'#e0b0ff', fractal:7 },
+    { key:'b_benOriginalEnabled', label:'Benesi Pwr2 (Original)', accent:'#ff8080', fractal:7 },
+    { key:'b_treeEnabled', label:'Pine Tree Pwr2', accent:'#ffac70', fractal:7 },
+    { key:'b_altSwapEnabled', label:'alternate c.y c.z swap', accent:'#f5e169', fractal:7 },
+    { key:'b_cylEnabled', label:'Inverse Cylindrical', accent:'#c0e0ff', fractal:7 },
+    { key:'b_juliaModeEnabled', label:'Post Offset (julia mode)', accent:'#ff9fcf', fractal:7 },
+    { key:'b_rot2Enabled', label:'Post Rotation 2', accent:'#e0b0ff', fractal:7 },
+    { key:'b_anDEEnabled', label:'Analytic DE extra', accent:'#c8e0ff', fractal:7 }
+  ];
+
+  const ui = {};
+  const animStates = {};
+  const intKeys = [
+    'max_iter','max_steps',
+    'riem_cntDXY','riem_cntTXY','riem_cntDYZ','riem_cntTYZ',
+    'riem_angle','riem_rotA','riem_rotB','riem_rotG',
+    'riem8_angle','riem8_rotA','riem8_rotB','riem8_rotG',
+    'ms_startD','ms_stopD','ms_startB','ms_stopB',
+    'b_rot1A','b_rot1B','b_rot1G','b_rot2A','b_rot2B','b_rot2G'
+  ];
+
+  function refreshSlider(def) {
+    const rec = ui[def.key]; if (!rec) return;
+    const v = params[def.key];
+    rec.val.textContent = def.fmt(v);
+    const pct = ((v - def.min) / (def.max - def.min)) * 100;
+    rec.input.style.setProperty('--pct', pct + '%');
+  }
+
+  (function buildHud() {
+    for (const def of SLIDERS) {
+      const row = document.createElement('div'); row.className = 'row';
+      const head = document.createElement('div'); head.className = 'head';
+      const lab = document.createElement('span'); lab.className = 'lbl';
+      lab.textContent = def.label + ':';
+      const right = document.createElement('div'); right.className = 'right';
+
+      const animWrap = document.createElement('div'); animWrap.className = 'anim';
+      const animChk = document.createElement('input');
+      animChk.type = 'checkbox';
+      animChk.className = 'anim-chk';
+      animChk.title = 'Animate this slider (ping-pong)';
+      animChk.style.setProperty('--accent', def.accent);
+
+      const speedInp = document.createElement('input');
+      speedInp.type = 'number';
+      speedInp.className = 'anim-speed';
+      speedInp.min = '0'; speedInp.max = '10'; speedInp.step = '0.001';
+      speedInp.value = '0.150';
+      speedInp.title = 'Speed (fraction of range per second)';
+      speedInp.style.setProperty('--accent', def.accent);
+
+      animWrap.appendChild(animChk); animWrap.appendChild(speedInp);
+
+      const val = document.createElement('span');
+      val.className = 'val';
+      val.style.color = def.accent;
+
+      right.appendChild(animWrap); right.appendChild(val);
+      head.appendChild(lab); head.appendChild(right);
+
+      const inp = document.createElement('input');
+      inp.type = 'range'; inp.min = def.min; inp.max = def.max; inp.step = def.step;
+      inp.value = params[def.key];
+      inp.setAttribute('aria-label', def.label);
+      inp.style.setProperty('--accent', def.accent);
+
+      inp.addEventListener('input', () => {
+        const raw = parseFloat(inp.value);
+        params[def.key] = intKeys.includes(def.key) ? Math.round(raw) : raw;
+        refreshSlider(def);
       });
 
-      if (!gl) {
-        showError("Your browser or device does not support WebGL2, which is required to run this shader.");
-        return;
-      }
-
-      function compileShader(type, source) {
-        const shader = gl.createShader(type);
-        gl.shaderSource(shader, source);
-        gl.compileShader(shader);
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-          const info = gl.getShaderInfoLog(shader);
-          gl.deleteShader(shader);
-          throw new Error(info || "Unknown shader compilation error.");
+      /* Dragging a slider temporarily kills its animation */
+      inp.addEventListener('pointerdown', () => {
+        const st = animStates[def.key];
+        if (st && st.enabled) {
+          st.enabled = false;
+          animChk.checked = false;
+          animWrap.classList.remove('on');
         }
-        return shader;
-      }
+      });
 
-      let program;
-      try {
-        const vs = compileShader(gl.VERTEX_SHADER, RAYMARCH_VERTEX_SHADER);
-        const fs = compileShader(gl.FRAGMENT_SHADER, RAYMARCH_FRAGMENT_SHADER);
-        program = gl.createProgram();
-        gl.attachShader(program, vs);
-        gl.attachShader(program, fs);
-        gl.linkProgram(program);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-          throw new Error(gl.getProgramInfoLog(program) || "Shader program link failed.");
+      /* Ensure blur after drag so H/R shortcuts keep working */
+      inp.addEventListener('pointerup', () => {
+        if (document.activeElement === inp) inp.blur();
+      });
+
+      animChk.addEventListener('change', () => {
+        const st = animStates[def.key];
+        if (animChk.checked) {
+          let pos = (params[def.key] - def.min) / (def.max - def.min);
+          st.pos = clamp(pos, 0, 1);
+          st.dir = (st.pos >= 0.999) ? -1 : 1;
         }
-      } catch (err) {
-        showError(err.message);
-        return;
-      }
+        st.enabled = animChk.checked;
+        animWrap.classList.toggle('on', animChk.checked);
+      });
 
-      // Fullscreen triangle-strip / 2-triangle quad matching Python VBO
-      const quadVerts = new Float32Array([
-        -1.0, -1.0,
-         1.0, -1.0,
-        -1.0,  1.0,
-        -1.0,  1.0,
-         1.0, -1.0,
-         1.0,  1.0
-      ]);
+      speedInp.addEventListener('input', () => {
+        const st = animStates[def.key];
+        let s = parseFloat(speedInp.value);
+        if (!isFinite(s) || s < 0) s = 0;
+        st.speed = clamp(s, 0, 10);
+      });
+      speedInp.addEventListener('wheel', e => e.stopPropagation());
 
-      const vao = gl.createVertexArray();
-      gl.bindVertexArray(vao);
-
-      const vbo = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-      gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
-
-      const posLoc = gl.getAttribLocation(program, "in_pos");
-      gl.enableVertexAttribArray(posLoc);
-      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-
-      // Uniform locations
-      const uniforms = {
-        u_resolution: gl.getUniformLocation(program, "u_resolution"),
-        u_ro: gl.getUniformLocation(program, "u_ro"),
-        u_forward: gl.getUniformLocation(program, "u_forward"),
-        u_right: gl.getUniformLocation(program, "u_right"),
-        u_up: gl.getUniformLocation(program, "u_up"),
-        u_power: gl.getUniformLocation(program, "u_power"),
-        u_eps: gl.getUniformLocation(program, "u_eps"),
-        u_alpha: gl.getUniformLocation(program, "u_alpha"),
-        u_beta: gl.getUniformLocation(program, "u_beta"),
-        u_shade: gl.getUniformLocation(program, "u_shade")
+      row.appendChild(head); row.appendChild(inp);
+      rowsEl.appendChild(row);
+      ui[def.key] = { row, input: inp, val, animWrap, animChk, speedInp, kind: 'slider', def };
+      animStates[def.key] = {
+        enabled: false, speed: 0.150,
+        pos: clamp((params[def.key] - def.min) / (def.max - def.min), 0, 1),
+        dir: 1
       };
+    }
 
-      // =========================================================================
-      // Application State (Exact match to Mndlbld1.py defaults + Shading)
-      // =========================================================================
-      const DEFAULTS = {
-        yaw: -0.68,
-        pitch: 0.45,
-        camDist: 3.0,
-        power: 8.0,
-        epsT: 0.5,
-        alphaDeg: 0.0,
-        betaDeg: 0.0,
-        shade: 1.0
-      };
-
-      const state = {
-        yaw: DEFAULTS.yaw,
-        pitch: DEFAULTS.pitch,
-        camDist: DEFAULTS.camDist,
-        power: DEFAULTS.power,
-        epsT: DEFAULTS.epsT,
-        alphaDeg: DEFAULTS.alphaDeg,
-        betaDeg: DEFAULTS.betaDeg,
-        shade: DEFAULTS.shade,
-        showHud: true
-      };
-
-      function getEps() {
-        return Math.pow(10.0, -4.0 + state.epsT * 2.0);
-      }
-
-      // =========================================================================
-      // High-DPI Canvas Resize Handling
-      // =========================================================================
-      function resizeCanvas() {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-        const displayWidth = Math.max(1, Math.floor(window.innerWidth * dpr));
-        const displayHeight = Math.max(1, Math.floor(window.innerHeight * dpr));
-
-        if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-          canvas.width = displayWidth;
-          canvas.height = displayHeight;
-          gl.viewport(0, 0, displayWidth, displayHeight);
-        }
-      }
-
-      window.addEventListener("resize", resizeCanvas);
-      resizeCanvas();
-
-      // =========================================================================
-      // HUD Controls & UI Sync
-      // =========================================================================
-      const hudEl = document.getElementById("hud");
-      const showHudPill = document.getElementById("show-hud-pill");
-      const fpsDisplay = document.getElementById("fps-display");
-
-      const sliderPower = document.getElementById("slider-power");
-      const sliderEps = document.getElementById("slider-eps");
-      const sliderAlpha = document.getElementById("slider-alpha");
-      const sliderBeta = document.getElementById("slider-beta");
-      const sliderShade = document.getElementById("slider-shade");
-
-      const valPower = document.getElementById("val-power");
-      const valEps = document.getElementById("val-eps");
-      const valAlpha = document.getElementById("val-alpha");
-      const valBeta = document.getElementById("val-beta");
-      const valShade = document.getElementById("val-shade");
-      const btnShadeMode = document.getElementById("btn-shade-mode");
-
-      function formatSignedDeg(deg) {
-        const sign = deg >= 0 ? "+" : "-";
-        return `${sign}${Math.abs(deg).toFixed(1)} deg`;
-      }
-
-      function paintSliderTrack(slider) {
-        const min = parseFloat(slider.min);
-        const max = parseFloat(slider.max);
-        const val = parseFloat(slider.value);
-        const pct = ((val - min) / (max - min)) * 100;
-        const accent = slider.dataset.accent || "#5fafff";
-        const trackBg = "rgb(70, 80, 105)";
-        slider.style.background = `linear-gradient(to right, ${accent} 0%, ${accent} ${pct}%, ${trackBg} ${pct}%, ${trackBg} 100%)`;
-        slider.style.borderRadius = "2px";
-        slider.style.height = "4px";
-        slider.style.margin = "6px 0";
-      }
-
-      function syncHudUI() {
-        sliderPower.value = state.power.toFixed(2);
-        sliderEps.value = state.epsT.toFixed(3);
-        sliderAlpha.value = state.alphaDeg.toFixed(1);
-        sliderBeta.value = state.betaDeg.toFixed(1);
-        sliderShade.value = state.shade.toFixed(2);
-
-        valPower.textContent = state.power.toFixed(2);
-        valEps.textContent = getEps().toFixed(5);
-        valAlpha.textContent = formatSignedDeg(state.alphaDeg);
-        valBeta.textContent = formatSignedDeg(state.betaDeg);
-        valShade.textContent = `${Math.round(state.shade * 100)}%`;
-
-        btnShadeMode.textContent = state.shade > 0.01 ? "Mode: Enhanced" : "Mode: Classic";
-
-        paintSliderTrack(sliderPower);
-        paintSliderTrack(sliderEps);
-        paintSliderTrack(sliderAlpha);
-        paintSliderTrack(sliderBeta);
-        paintSliderTrack(sliderShade);
-      }
-
-      function setHudVisibility(visible) {
-        state.showHud = visible;
-        if (visible) {
-          hudEl.classList.remove("hidden");
-          showHudPill.classList.remove("visible");
-        } else {
-          hudEl.classList.add("hidden");
-          showHudPill.classList.add("visible");
-        }
-      }
-
-      function resetAll() {
-        state.yaw = DEFAULTS.yaw;
-        state.pitch = DEFAULTS.pitch;
-        state.camDist = DEFAULTS.camDist;
-        state.power = DEFAULTS.power;
-        state.epsT = DEFAULTS.epsT;
-        state.alphaDeg = DEFAULTS.alphaDeg;
-        state.betaDeg = DEFAULTS.betaDeg;
-        state.shade = DEFAULTS.shade;
-        syncHudUI();
-      }
-
-      function toggleShadeMode() {
-        state.shade = state.shade > 0.01 ? 0.0 : 1.0;
-        syncHudUI();
-      }
-
-      sliderPower.addEventListener("input", () => {
-        state.power = parseFloat(sliderPower.value);
-        syncHudUI();
+    for (const def of CHECKBOXES) {
+      const row = document.createElement('div'); row.className = 'row check';
+      const label = document.createElement('label');
+      const inp = document.createElement('input'); inp.type = 'checkbox';
+      inp.checked = !!params[def.key]; inp.setAttribute('aria-label', def.label);
+      inp.style.setProperty('--accent', def.accent);
+      const name = document.createElement('span'); name.className = 'lblname';
+      name.style.color = def.accent; name.textContent = def.label;
+      const val = document.createElement('span'); val.className = 'lblval';
+      val.textContent = params[def.key] ? 'on' : 'off';
+      inp.addEventListener('change', () => {
+        params[def.key] = inp.checked;
+        val.textContent = inp.checked ? 'on' : 'off';
+        /* ensure shortcuts wake up immediately after a click */
+        if (document.activeElement === inp) inp.blur();
       });
+      label.appendChild(inp); label.appendChild(name); label.appendChild(val);
+      row.appendChild(label); rowsEl.appendChild(row);
+      ui[def.key] = { row, input: inp, val, kind: 'checkbox', def };
+      animStates[def.key] = null;
+    }
+    for (const def of SLIDERS) refreshSlider(def);
+  })();
 
-      sliderEps.addEventListener("input", () => {
-        state.epsT = parseFloat(sliderEps.value);
-        syncHudUI();
-      });
+  function updateSliderVisibility() {
+    for (const key in ui) {
+      const rec = ui[key]; const def = rec.def;
+      let visible;
+      if (rec.kind === 'checkbox') {
+        visible = (def.fractal === fractalType) || (def.fractal === 'any');
+      } else if (def.fractal === 'pwr-shared') visible = (fractalType === 0 || fractalType === 2);
+      else if (def.fractal === 'pwr-riem')   visible = (fractalType === 3);
+      else if (def.fractal === 'pwr-ms')     visible = (fractalType === 4);
+      else if (def.fractal === -1)           visible = true;
+      else                                     visible = (def.fractal === fractalType);
+      rec.row.style.display = visible ? '' : 'none';
+      if (visible) rec.input.removeAttribute('disabled');
+      else rec.input.setAttribute('disabled', '');
+    }
+    riemWarn.classList.toggle('hidden', fractalType !== 3);
+    msWarn.classList.toggle('hidden', fractalType !== 4);
+    riem8Warn.classList.toggle('hidden', fractalType !== 5);
+    axWarn.classList.toggle('hidden', fractalType !== 6);
+    benpWarn.classList.toggle('hidden', fractalType !== 7);
+    bsWarn.classList.toggle('hidden', fractalType !== 8);
+  }
+  updateSliderVisibility();
 
-      sliderAlpha.addEventListener("input", () => {
-        state.alphaDeg = parseFloat(sliderAlpha.value);
-        syncHudUI();
-      });
+  function updateAnimations(dt) {
+    if (dt > 0.15) dt = 0.15;
+    for (const def of SLIDERS) {
+      const st = animStates[def.key];
+      if (!st || !st.enabled || st.speed <= 0) continue;
+      st.pos += st.dir * st.speed * dt;
+      if (st.pos >= 1) { st.pos = 1; st.dir = -1; }
+      if (st.pos <= 0) { st.pos = 0; st.dir = 1; }
+      let v = def.min + st.pos * (def.max - def.min);
+      if (def.step >= 1) v = Math.round(v);
+      v = clamp(v, def.min, def.max);
+      params[def.key] = v;
+      ui[def.key].input.value = v;
+      refreshSlider(def);
+    }
+  }
 
-      sliderBeta.addEventListener("input", () => {
-        state.betaDeg = parseFloat(sliderBeta.value);
-        syncHudUI();
-      });
+  function resetAll() {
+    yaw = -0.68; pitch = 0.35; camDist = 5.0;
 
-      sliderShade.addEventListener("input", () => {
-        state.shade = parseFloat(sliderShade.value);
-        syncHudUI();
-      });
+    params.power = 8.0; params.wo_scale = 1.0; params.wi_scale = 1.0; params.zz_scale = 1.0;
+    params.eps_t = 0.5; params.max_iter = 32; params.max_steps = 192; params.bailout = 4.0;
+    params.shadowsEnabled = false;
+    params.off_x = 0.300; params.off_y = 0.300; params.off_z = 0.300;
+    params.xeno_alpha = 0.000; params.xeno_beta = 0.000; params.xeno_sA = 1.000; params.xeno_sB = 1.000;
+    params.xeno_expOff = 1.000; params.xeno_scaleC = 1.000;
+    params.xeno_offX = 0.000; params.xeno_offY = 0.000; params.xeno_offZ = 0.000;
+    params.riem_power = 2.0; params.riem_scale = 1.000;
+    params.riem_offA = 0.000; params.riem_offB = 0.000;
+    params.riem_angle = 0.0;
+    params.riem_cntDXY = 1; params.riem_cntTXY = 0;
+    params.riem_cntDYZ = 1; params.riem_cntTYZ = 0;
+    params.riem_cX = 0.500; params.riem_cY = 0.500; params.riem_cZ = 0.500;
+    params.riem_deOff = 1.0; params.riem_deScale = 1.0;
+    params.riem_rotA = 0.0; params.riem_rotB = 0.0; params.riem_rotG = 0.0;
+    params.riem_enX = true; params.riem_enX2 = false;
+    params.riem_enY = true; params.riem_enY2 = false;
+    params.riem_rotEnabled = false; params.riem_analyticDE = false;
+    params.riem8_scale = 0.800; params.riem8_offA = 0.000; params.riem8_offB = 0.000;
+    params.riem8_angle = 0.0;
+    params.riem8_cX = 0.500; params.riem8_cY = 0.500; params.riem8_cZ = 0.500;
+    params.riem8_deOff = 1.0; params.riem8_deScale = 1.0;
+    params.riem8_rotA = 0.0; params.riem8_rotB = 0.0; params.riem8_rotG = 0.0;
+    params.riem8_rotEnabled = false; params.riem8_analyticDE = false;
+    params.riem8_mandelbrotMode = true;
+    params.ms_power = 8.0; params.ms_phiPower = 8.0;
+    params.ms_minR = 0.500; params.ms_scaleB = 1.000;
+    params.ms_offsetR = 0.000; params.ms_scaleNeg1 = 1.000;
+    params.ms_anDEscale1 = 1.000; params.ms_anDEoff0 = 0.000;
+    params.ms_scaleX = 1.000; params.ms_scaleY = 1.000; params.ms_scaleZ = 1.000;
+    params.ms_startD = 0; params.ms_stopD = 32; params.ms_startB = 0; params.ms_stopB = 32;
+    params.ms_sphOffset = 0.000; params.ms_sphScale = 1.000;
+    params.ms_preEnabled = false; params.ms_asinMode = false;
+    params.ms_rrMode = false; params.ms_sqrtRr = false;
+    params.ms_swap = false; params.ms_sphEnabled = false; params.ms_customDE = false;
+    params.ax_initQuadray = true; params.ax_absFirst = false;
+    params.ax_cadd = 0.000;
+    params.ax_offX = 0.000; params.ax_offY = 0.000; params.ax_offZ = 0.000; params.ax_offW = 0.000;
+    params.ax_scale = 1.000;
+    params.ax_cpX = 1.000; params.ax_cpY = 1.000; params.ax_cpZ = 1.000; params.ax_cpW = 1.000;
+    params.ax_anDEscale = 1.000; params.ax_anDEoff0 = 0.000;
+    params.b_prismEnabled = false; params.b_t1Enabled = true; params.b_t1RotEnabled = false;
+    params.b_benOriginalEnabled = true; params.b_treeEnabled = false; params.b_altSwapEnabled = false;
+    params.b_cylEnabled = false; params.b_juliaModeEnabled = false;
+    params.b_rot2Enabled = false; params.b_anDEEnabled = false;
+    params.b_dotScale = 1.000;
+    params.b_mult000X = 1.000; params.b_mult000Y = 1.000; params.b_mult000Z = 1.000;
+    params.b_scale222X = 1.000; params.b_scale222Y = 1.000; params.b_scale222Z = 1.000;
+    params.b_off200X = 0.000; params.b_off200Y = 0.000; params.b_off200Z = 0.000;
+    params.b_multAX = 1.000; params.b_multAY = 1.000; params.b_multAZ = 1.000;
+    params.b_mult100X = 1.000; params.b_mult100Y = 1.000; params.b_mult100Z = 1.000;
+    params.b_off000X = 0.000; params.b_off000Y = 0.000; params.b_off000Z = 0.000;
+    params.b_scaleA1 = 1.000; params.b_scale1 = 1.000; params.b_scaleC1 = 1.000;
+    params.b_rot1A = 0.0; params.b_rot1B = 0.0; params.b_rot1G = 0.0;
+    params.b_rot2A = 0.0; params.b_rot2B = 0.0; params.b_rot2G = 0.0;
+    params.b_anDEscale = 1.000; params.b_anDEoff = 0.000;
+    params.bs_adcX = 0.000; params.bs_adcY = 0.000; params.bs_adcZ = 0.000; params.bs_adcW = 0.000;
 
-      btnShadeMode.addEventListener("click", toggleShadeMode);
-      document.getElementById("btn-reset").addEventListener("click", resetAll);
-      document.getElementById("btn-toggle-hud").addEventListener("click", () => setHudVisibility(false));
-      showHudPill.addEventListener("click", () => setHudVisibility(true));
+    for (const def of SLIDERS) {
+      ui[def.key].input.value = params[def.key];
+      refreshSlider(def);
+      const st = animStates[def.key];
+      if (st) { st.pos = clamp((params[def.key] - def.min) / (def.max - def.min), 0, 1); st.dir = 1; }
+    }
+    for (const def of CHECKBOXES) {
+      ui[def.key].input.checked = !!params[def.key];
+      ui[def.key].val.textContent = params[def.key] ? 'on' : 'off';
+    }
+  }
 
-      syncHudUI();
+  function setFractal(t) {
+    fractalType = t | 0; selectEl.value = String(fractalType); updateSliderVisibility();
+  }
 
-      // =========================================================================
-      // Keyboard Shortcuts (S: Shading Mode, R: Reset, H: Toggle HUD)
-      // =========================================================================
-      window.addEventListener("keydown", (e) => {
-        if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
-          // Allow R, H, and S even if a range input is focused
-          const k = e.key.toLowerCase();
-          if (k !== "r" && k !== "h" && k !== "s") return;
-        }
-        const key = e.key.toLowerCase();
-        if (key === "h") {
-          setHudVisibility(!state.showHud);
-        } else if (key === "r") {
-          resetAll();
-        } else if (key === "s") {
-          toggleShadeMode();
-        }
-      });
+  /* Blur the select after change so shortcuts like H keep working */
+  selectEl.addEventListener('change', () => {
+    setFractal(parseInt(selectEl.value, 10));
+    selectEl.blur();
+  });
 
-      // =========================================================================
-      // Mouse & Touch Orbit + Zoom Controls
-      // =========================================================================
-      let isDragging = false;
-      let lastPointerX = 0;
-      let lastPointerY = 0;
+  /* ------------------------------------------------------------------
+     INPUT
+     ------------------------------------------------------------------ */
 
-      // Mouse drag to orbit
-      canvas.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;
-        isDragging = true;
-        lastPointerX = e.clientX;
-        lastPointerY = e.clientY;
-      });
+  let dragging = false, lastX = 0, lastY = 0;
+  canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    dragging = true; lastX = e.clientX; lastY = e.clientY; e.preventDefault();
+  });
+  window.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    yaw -= dx * 0.007; pitch = clamp(pitch + dy * 0.007, -1.5, 1.5);
+  });
+  window.addEventListener('pointerup', () => dragging = false);
+  window.addEventListener('pointercancel', () => dragging = false);
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    camDist = clamp(camDist * Math.pow(0.9, dir), 1.0, 14.0);
+  }, { passive: false });
 
-      window.addEventListener("mousemove", (e) => {
-        if (!isDragging) return;
-        const dx = e.clientX - lastPointerX;
-        const dy = e.clientY - lastPointerY;
-        lastPointerX = e.clientX;
-        lastPointerY = e.clientY;
+  /* --- Keyboard shortcuts (H/R/1-9) with correct typing-input guard ---- */
+  function isTypingTarget(t) {
+    if (!t) return false;
+    if (t.tagName === 'TEXTAREA') return true;
+    if (t.tagName !== 'INPUT') return false;
+    const typing = ['text','number','search','email','password','tel','url'];
+    return typing.includes((t.type || '').toLowerCase());
+  }
 
-        state.yaw -= dx * 0.007;
-        state.pitch = clamp(state.pitch + dy * 0.007, -1.5, 1.5);
-      });
+  window.addEventListener('keydown', e => {
+    if (isTypingTarget(e.target)) return;       // user is typing a value
+    if (e.ctrlKey || e.metaKey || e.altKey) return;   // don't steal OS shortcuts
+    const k = e.key.toLowerCase();
 
-      window.addEventListener("mouseup", (e) => {
-        if (e.button === 0) {
-          isDragging = false;
-        }
-      });
+    if (k === 'h') {
+      hudEl.classList.toggle('hidden');
+      e.preventDefault();
+    } else if (k === 'r') {
+      resetAll();
+      e.preventDefault();
+    } else if (k >= '1' && k <= '9') {
+      const n = parseInt(k, 10) - 1;
+      if (n >= 0 && n <= 8) setFractal(n);
+      e.preventDefault();
+    }
+  });
 
-      // Mouse wheel to zoom
-      canvas.addEventListener("wheel", (e) => {
-        e.preventDefault();
-        // Normalize wheel delta across browsers to match pygame MOUSEWHEEL unit ticks
-        const wheelSteps = -Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY) / 100.0, 2.0);
-        state.camDist = clamp(state.camDist * Math.pow(0.9, wheelSteps), 1.35, 8.0);
-      }, { passive: false });
+  function resizeCanvas() {
+    const cssW = Math.max(1, window.innerWidth);
+    const cssH = Math.max(1, window.innerHeight);
+    const s = Math.min(1, Math.sqrt(1.5e6 / (cssW * cssH)));
+    const w = Math.max(1, Math.round(cssW * s));
+    const h = Math.max(1, Math.round(cssH * s));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
 
-      // Touch drag (1 finger) and pinch-to-zoom (2 fingers)
-      let activeTouches = new Map();
-      let lastPinchDist = null;
+  /* ------------------------------------------------------------------
+     MATH
+     ------------------------------------------------------------------ */
 
-      function getTouchDistance(t1, t2) {
-        return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-      }
+  function normVec(v) {
+    const n = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    const d = Math.max(n, 1e-10);
+    return [v[0]/d, v[1]/d, v[2]/d];
+  }
+  function cross(a, b) {
+    return [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
+  }
+  function buildRotationMatrix(aDeg, bDeg, gDeg) {
+    const a = aDeg * Math.PI / 180;
+    const b = bDeg * Math.PI / 180;
+    const g = gDeg * Math.PI / 180;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const cb = Math.cos(b), sb = Math.sin(b);
+    const cg = Math.cos(g), sg = Math.sin(g);
+    return new Float32Array([
+      cg*cb, sg*cb, -sb,
+      cg*sb*sa - sg*ca, sg*sb*sa + cg*ca, cb*sa,
+      cg*sb*ca + sg*sa, sg*sb*ca - cg*sa, cb*ca
+    ]);
+  }
 
-      canvas.addEventListener("touchstart", (e) => {
-        e.preventDefault();
-        for (const t of e.changedTouches) {
-          activeTouches.set(t.identifier, { clientX: t.clientX, clientY: t.clientY });
-        }
+  const rotBuf = new Float32Array(9);
 
-        if (activeTouches.size === 1) {
-          const onlyTouch = activeTouches.values().next().value;
-          isDragging = true;
-          lastPointerX = onlyTouch.clientX;
-          lastPointerY = onlyTouch.clientY;
-          lastPinchDist = null;
-        } else if (activeTouches.size === 2) {
-          isDragging = false;
-          const pts = Array.from(activeTouches.values());
-          lastPinchDist = getTouchDistance(pts[0], pts[1]);
-        }
-      }, { passive: false });
+  function renderFrame() {
+    const w = canvas.width, h = canvas.height;
+    gl.viewport(0, 0, w, h); gl.useProgram(prog);
 
-      canvas.addEventListener("touchmove", (e) => {
-        e.preventDefault();
-        for (const t of e.changedTouches) {
-          if (activeTouches.has(t.identifier)) {
-            activeTouches.set(t.identifier, { clientX: t.clientX, clientY: t.clientY });
-          }
-        }
+    const cp = Math.cos(pitch);
+    const rox = camDist * cp * Math.cos(yaw);
+    const roy = camDist * cp * Math.sin(yaw);
+    const roz = camDist * Math.sin(pitch);
 
-        if (activeTouches.size === 1 && isDragging) {
-          const onlyTouch = activeTouches.values().next().value;
-          const dx = onlyTouch.clientX - lastPointerX;
-          const dy = onlyTouch.clientY - lastPointerY;
-          lastPointerX = onlyTouch.clientX;
-          lastPointerY = onlyTouch.clientY;
+    const forward = normVec([-rox, -roy, -roz]);
+    const right = normVec(cross(forward, [0, 0, 1]));
+    const up = cross(right, forward);
 
-          state.yaw -= dx * 0.007;
-          state.pitch = clamp(state.pitch + dy * 0.007, -1.5, 1.5);
-        } else if (activeTouches.size === 2) {
-          const pts = Array.from(activeTouches.values());
-          const newDist = getTouchDistance(pts[0], pts[1]);
-          if (lastPinchDist && lastPinchDist > 0) {
-            const zoomRatio = lastPinchDist / newDist;
-            state.camDist = clamp(state.camDist * zoomRatio, 1.35, 8.0);
-          }
-          lastPinchDist = newDist;
-        }
-      }, { passive: false });
+    gl.uniform2f(U.u_resolution, w, h);
+    gl.uniform3f(U.u_ro, rox, roy, roz);
+    gl.uniform3f(U.u_forward, forward[0], forward[1], forward[2]);
+    gl.uniform3f(U.u_right, right[0], right[1], right[2]);
+    gl.uniform3f(U.u_up, up[0], up[1], up[2]);
 
-      function handleTouchEnd(e) {
-        for (const t of e.changedTouches) {
-          activeTouches.delete(t.identifier);
-        }
-        if (activeTouches.size === 1) {
-          const remaining = activeTouches.values().next().value;
-          isDragging = true;
-          lastPointerX = remaining.clientX;
-          lastPointerY = remaining.clientY;
-          lastPinchDist = null;
-        } else if (activeTouches.size === 0) {
-          isDragging = false;
-          lastPinchDist = null;
-        }
-      }
+    gl.uniform1i(U.u_fractal, fractalType);
+    gl.uniform1i(U.u_shadowsEnabled, params.shadowsEnabled ? 1 : 0);
 
-      canvas.addEventListener("touchend", handleTouchEnd);
-      canvas.addEventListener("touchcancel", handleTouchEnd);
+    let pwr;
+    if (fractalType === 3) pwr = params.riem_power;
+    else if (fractalType === 4) pwr = params.ms_power;
+    else if (fractalType === 5) pwr = 8.0;
+    else if (fractalType === 6) pwr = 2.0;
+    else if (fractalType === 7) pwr = 2.0;
+    else if (fractalType === 8) pwr = 2.0;
+    else pwr = params.power;
 
-      // =========================================================================
-      // Render Loop & FPS Counter
-      // =========================================================================
-      let frameCount = 0;
-      let lastFpsTime = performance.now();
+    gl.uniform1f(U.u_power, pwr);
+    gl.uniform1f(U.u_wo_scale, params.wo_scale);
+    gl.uniform1f(U.u_wi_scale, params.wi_scale);
+    gl.uniform1f(U.u_zz_scale, params.zz_scale);
+    gl.uniform1f(U.u_eps, getEps());
+    gl.uniform1i(U.u_max_iter, params.max_iter | 0);
+    gl.uniform1i(U.u_max_steps, params.max_steps | 0);
+    gl.uniform1f(U.u_bailout, params.bailout);
 
-      function render(now) {
-        resizeCanvas();
+    gl.uniform3f(U.u_offset, params.off_x, params.off_y, params.off_z);
+    gl.uniform1f(U.u_xeno_alpha, params.xeno_alpha);
+    gl.uniform1f(U.u_xeno_beta, params.xeno_beta);
+    gl.uniform1f(U.u_xeno_sA, params.xeno_sA);
+    gl.uniform1f(U.u_xeno_sB, params.xeno_sB);
+    gl.uniform1f(U.u_xeno_expOff, params.xeno_expOff);
+    gl.uniform1f(U.u_xeno_scaleC, params.xeno_scaleC);
+    gl.uniform3f(U.u_xeno_offset, params.xeno_offX, params.xeno_offY, params.xeno_offZ);
 
-        // Update FPS display every 250ms
-        frameCount++;
-        const elapsed = now - lastFpsTime;
-        if (elapsed >= 250) {
-          const fps = (frameCount * 1000.0) / elapsed;
-          fpsDisplay.textContent = `${fps.toFixed(1).padStart(5, " ")} FPS`;
-          frameCount = 0;
-          lastFpsTime = now;
-        }
+    gl.uniform1f(U.u_riem_scale, params.riem_scale);
+    gl.uniform1f(U.u_riem_offA, params.riem_offA);
+    gl.uniform1f(U.u_riem_offB, params.riem_offB);
+    gl.uniform1f(U.u_riem_angleDeg, params.riem_angle);
+    gl.uniform1i(U.u_riem_cntDXY, params.riem_cntDXY | 0);
+    gl.uniform1i(U.u_riem_cntTXY, params.riem_cntTXY | 0);
+    gl.uniform1i(U.u_riem_cntDYZ, params.riem_cntDYZ | 0);
+    gl.uniform1i(U.u_riem_cntTYZ, params.riem_cntTYZ | 0);
+    gl.uniform1i(U.u_riem_enX, params.riem_enX ? 1 : 0);
+    gl.uniform1i(U.u_riem_enX2, params.riem_enX2 ? 1 : 0);
+    gl.uniform1i(U.u_riem_enY, params.riem_enY ? 1 : 0);
+    gl.uniform1i(U.u_riem_enY2, params.riem_enY2 ? 1 : 0);
+    gl.uniform3f(U.u_riem_adC, params.riem_cX, params.riem_cY, params.riem_cZ);
+    gl.uniform1i(U.u_riem_analyticDE, params.riem_analyticDE ? 1 : 0);
+    gl.uniform1f(U.u_riem_deOffset, params.riem_deOff);
+    gl.uniform1f(U.u_riem_deScale, params.riem_deScale);
+    gl.uniform1i(U.u_riem_rotEnabled, params.riem_rotEnabled ? 1 : 0);
+    const M1 = buildRotationMatrix(params.riem_rotA, params.riem_rotB, params.riem_rotG);
+    for (let i = 0; i < 9; i++) rotBuf[i] = M1[i];
+    gl.uniformMatrix3fv(U.u_riem_rotMat, false, rotBuf);
 
-        // Compute Z-up camera orbit basis vectors (matching Python implementation)
-        const cp = Math.cos(state.pitch);
-        const ro = [
-          state.camDist * cp * Math.cos(state.yaw),
-          state.camDist * cp * Math.sin(state.yaw),
-          state.camDist * Math.sin(state.pitch)
-        ];
+    gl.uniform1f(U.u_riem8_scale, params.riem8_scale);
+    gl.uniform1f(U.u_riem8_offA, params.riem8_offA);
+    gl.uniform1f(U.u_riem8_offB, params.riem8_offB);
+    gl.uniform1f(U.u_riem8_angleDeg, params.riem8_angle);
+    gl.uniform3f(U.u_riem8_adC, params.riem8_cX, params.riem8_cY, params.riem8_cZ);
+    gl.uniform1i(U.u_riem8_analyticDE, params.riem8_analyticDE ? 1 : 0);
+    gl.uniform1i(U.u_riem8_mandelbrotMode, params.riem8_mandelbrotMode ? 1 : 0);
+    gl.uniform1f(U.u_riem8_deOffset, params.riem8_deOff);
+    gl.uniform1f(U.u_riem8_deScale, params.riem8_deScale);
+    gl.uniform1i(U.u_riem8_rotEnabled, params.riem8_rotEnabled ? 1 : 0);
+    const M2 = buildRotationMatrix(params.riem8_rotA, params.riem8_rotB, params.riem8_rotG);
+    for (let i = 0; i < 9; i++) rotBuf[i] = M2[i];
+    gl.uniformMatrix3fv(U.u_riem8_rotMat, false, rotBuf);
 
-        const forward = normalizeVec3([-ro[0], -ro[1], -ro[2]]);
-        const right = normalizeVec3(crossVec3(forward, [0.0, 0.0, 1.0]));
-        const up = crossVec3(right, forward);
+    gl.uniform1f(U.u_ms_power, params.ms_power);
+    gl.uniform1f(U.u_ms_phiPower, params.ms_phiPower);
+    gl.uniform1f(U.u_ms_minR, params.ms_minR);
+    gl.uniform1f(U.u_ms_scaleB, params.ms_scaleB);
+    gl.uniform1f(U.u_ms_offsetR, params.ms_offsetR);
+    gl.uniform1f(U.u_ms_scaleNeg1, params.ms_scaleNeg1);
+    gl.uniform1f(U.u_ms_anDEscale1, params.ms_anDEscale1);
+    gl.uniform1f(U.u_ms_anDEoff0, params.ms_anDEoff0);
+    gl.uniform3f(U.u_ms_scale3D, params.ms_scaleX, params.ms_scaleY, params.ms_scaleZ);
+    gl.uniform1i(U.u_ms_startD, params.ms_startD | 0);
+    gl.uniform1i(U.u_ms_stopD, params.ms_stopD | 0);
+    gl.uniform1i(U.u_ms_startB, params.ms_startB | 0);
+    gl.uniform1i(U.u_ms_stopB, params.ms_stopB | 0);
+    gl.uniform1f(U.u_ms_sphOffset, params.ms_sphOffset);
+    gl.uniform1f(U.u_ms_sphScale, params.ms_sphScale);
+    gl.uniform1i(U.u_ms_preEnabled, params.ms_preEnabled ? 1 : 0);
+    gl.uniform1i(U.u_ms_asinMode, params.ms_asinMode ? 1 : 0);
+    gl.uniform1i(U.u_ms_rrMode, params.ms_rrMode ? 1 : 0);
+    gl.uniform1i(U.u_ms_sqrtRr, params.ms_sqrtRr ? 1 : 0);
+    gl.uniform1i(U.u_ms_swap, params.ms_swap ? 1 : 0);
+    gl.uniform1i(U.u_ms_sphEnabled, params.ms_sphEnabled ? 1 : 0);
+    gl.uniform1i(U.u_ms_customDE, params.ms_customDE ? 1 : 0);
 
-        gl.useProgram(program);
-        gl.bindVertexArray(vao);
+    gl.uniform1i(U.u_ax_initQuadray, params.ax_initQuadray ? 1 : 0);
+    gl.uniform1i(U.u_ax_absFirst, params.ax_absFirst ? 1 : 0);
+    gl.uniform1f(U.u_ax_cadd, params.ax_cadd);
+    gl.uniform4f(U.u_ax_domainOffset, params.ax_offX, params.ax_offY, params.ax_offZ, params.ax_offW);
+    gl.uniform1f(U.u_ax_scale, params.ax_scale);
+    gl.uniform4f(U.u_ax_cpixel, params.ax_cpX, params.ax_cpY, params.ax_cpZ, params.ax_cpW);
+    gl.uniform1f(U.u_ax_anDEscale, params.ax_anDEscale);
+    gl.uniform1f(U.u_ax_anDEoff0, params.ax_anDEoff0);
 
-        gl.uniform2f(uniforms.u_resolution, canvas.width, canvas.height);
-        gl.uniform3f(uniforms.u_ro, ro[0], ro[1], ro[2]);
-        gl.uniform3f(uniforms.u_forward, forward[0], forward[1], forward[2]);
-        gl.uniform3f(uniforms.u_right, right[0], right[1], right[2]);
-        gl.uniform3f(uniforms.u_up, up[0], up[1], up[2]);
-        gl.uniform1f(uniforms.u_power, state.power);
-        gl.uniform1f(uniforms.u_eps, getEps());
-        gl.uniform1f(uniforms.u_alpha, (state.alphaDeg * Math.PI) / 180.0);
-        gl.uniform1f(uniforms.u_beta, (state.betaDeg * Math.PI) / 180.0);
-        gl.uniform1f(uniforms.u_shade, state.shade);
+    gl.uniform1i(U.u_b_prismEnabled, params.b_prismEnabled ? 1 : 0);
+    gl.uniform1i(U.u_b_t1Enabled, params.b_t1Enabled ? 1 : 0);
+    gl.uniform1i(U.u_b_t1RotEnabled, params.b_t1RotEnabled ? 1 : 0);
+    gl.uniform1i(U.u_b_benOriginalEnabled, params.b_benOriginalEnabled ? 1 : 0);
+    gl.uniform1i(U.u_b_treeEnabled, params.b_treeEnabled ? 1 : 0);
+    gl.uniform1i(U.u_b_altSwapEnabled, params.b_altSwapEnabled ? 1 : 0);
+    gl.uniform1i(U.u_b_cylEnabled, params.b_cylEnabled ? 1 : 0);
+    gl.uniform1i(U.u_b_juliaModeEnabled, params.b_juliaModeEnabled ? 1 : 0);
+    gl.uniform1i(U.u_b_rot2Enabled, params.b_rot2Enabled ? 1 : 0);
+    gl.uniform1i(U.u_b_anDEEnabled, params.b_anDEEnabled ? 1 : 0);
+    gl.uniform1i(U.u_b_startP, 0); gl.uniform1i(U.u_b_stopP, 32);
+    gl.uniform1i(U.u_b_startT1, 0); gl.uniform1i(U.u_b_stopT1, 32);
+    gl.uniform1i(U.u_b_startF, 0); gl.uniform1i(U.u_b_stopF, 32);
+    gl.uniform1i(U.u_b_startC, 0); gl.uniform1i(U.u_b_stopC, 32);
+    gl.uniform1i(U.u_b_startD, 0); gl.uniform1i(U.u_b_stopD, 32);
+    gl.uniform1i(U.u_b_startE, 0); gl.uniform1i(U.u_b_stopE, 32);
+    gl.uniform1f(U.u_b_dotScale, params.b_dotScale);
+    gl.uniform3f(U.u_b_mult000, params.b_mult000X, params.b_mult000Y, params.b_mult000Z);
+    gl.uniform3f(U.u_b_scale222, params.b_scale222X, params.b_scale222Y, params.b_scale222Z);
+    gl.uniform3f(U.u_b_off200, params.b_off200X, params.b_off200Y, params.b_off200Z);
+    gl.uniform3f(U.u_b_multA, params.b_multAX, params.b_multAY, params.b_multAZ);
+    gl.uniform3f(U.u_b_mult100, params.b_mult100X, params.b_mult100Y, params.b_mult100Z);
+    gl.uniform3f(U.u_b_off000, params.b_off000X, params.b_off000Y, params.b_off000Z);
+    gl.uniform1f(U.u_b_scaleA1, params.b_scaleA1);
+    gl.uniform1f(U.u_b_scale1, params.b_scale1);
+    gl.uniform1f(U.u_b_scaleC1, params.b_scaleC1);
+    gl.uniform1f(U.u_b_rot1A, params.b_rot1A);
+    gl.uniform1f(U.u_b_rot1B, params.b_rot1B);
+    gl.uniform1f(U.u_b_rot1G, params.b_rot1G);
+    gl.uniform1f(U.u_b_rot2A, params.b_rot2A);
+    gl.uniform1f(U.u_b_rot2B, params.b_rot2B);
+    gl.uniform1f(U.u_b_rot2G, params.b_rot2G);
+    gl.uniform1f(U.u_b_anDEscale, params.b_anDEscale);
+    gl.uniform1f(U.u_b_anDEoff, params.b_anDEoff);
 
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.uniform4f(U.u_bs_adc, params.bs_adcX, params.bs_adcY, params.bs_adcZ, params.bs_adcW);
 
-        requestAnimationFrame(render);
-      }
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
 
-      window.onload = function () {
-        requestAnimationFrame(render);
-      };
-    })();
-  </script>
+  let frameCount = 0, fpsClock = performance.now();
+  let lastTickTime = performance.now();
+
+  function tick(now) {
+    const dt = Math.max(0, (now - lastTickTime) / 1000);
+    lastTickTime = now;
+    frameCount++;
+    const elapsed = now - fpsClock;
+    if (elapsed >= 300) {
+      fpsEl.textContent = (frameCount * 1000 / elapsed).toFixed(1) + ' FPS';
+      frameCount = 0; fpsClock = now;
+    }
+    updateAnimations(dt);
+    renderFrame();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+})();
+</script>
 </body>
 </html>
