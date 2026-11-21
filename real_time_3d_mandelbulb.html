@@ -443,7 +443,7 @@ Thanks buddhi1980!
     Pyramid, V2, V3, V6 and V7.
   </div>
 
-  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: HUD · 0-9, Shift+0-9: Palette · ✓ anim (min/max) · ✓ Shadows · speed = range/sec</div>
+  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: HUD · 0-9 / Shift+0-9: Palette · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
 </div>
 
 <div id="err"></div>
@@ -494,6 +494,7 @@ Thanks buddhi1980!
       stencil: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
   } catch (e) { gl = null; }
   if (!gl) { fail('WebGL2 is not available in this browser.'); return; }
+  const parallelCompile = gl.getExtension('KHR_parallel_shader_compile');
 
   /* ------------------------------------------------------------------
      VERTEX + FRAGMENT SHADERS
@@ -510,19 +511,26 @@ precision highp float;
 out vec4 fragColor;
 
 uniform vec2  u_resolution;
-uniform vec3  u_ro, u_forward, u_right, u_up;
+uniform float u_pixEps;
+uniform vec3  u_forward, u_right, u_up;
+uniform vec3  u_roObj, u_lightDir;
+uniform float u_cc;
+uniform float u_boundR;
 uniform mat3  u_rotMat;
 uniform float u_power;
 uniform float u_wo_scale, u_wi_scale, u_zz_scale;
 uniform float u_eps;
-uniform float u_boundR, u_stepScale;
+uniform float u_stepScale;
 uniform float u_trapOffset, u_trapScale;
 uniform int   u_max_iter, u_max_steps;
 uniform float u_bailout;
+uniform float u_bailout2;
 uniform int   u_shadowsEnabled;
 uniform int   u_wireframeEnabled;
 uniform int   u_palette;
+uniform vec3  u_palA, u_palB, u_palC, u_palD;
 uniform float u_colorShift;
+uniform int   u_fractal;   /* used only by the raw FRAG_SHADER fallback sceneDE */
 
 uniform vec3  u_offset;
 uniform float u_mb_alpha, u_mb_beta, u_mb_absA, u_mb_absB, u_mb_gamma;
@@ -559,6 +567,7 @@ uniform float u_xeno_expOff, u_xeno_scaleC, u_xeno_deOff;
 uniform vec3  u_xeno_offset;
 
 uniform float u_riem_scale, u_riem_offA, u_riem_offB, u_riem_angleDeg;
+uniform vec2  u_riem_cs;
 uniform int   u_riem_cntDXY, u_riem_cntTXY, u_riem_cntDYZ, u_riem_cntTYZ;
 uniform int   u_riem_enX, u_riem_enX2, u_riem_enY, u_riem_enY2;
 uniform vec3  u_riem_adC;
@@ -567,6 +576,7 @@ uniform int   u_riem_rotEnabled, u_riem_analyticDE;
 uniform float u_riem_deOffset, u_riem_deScale;
 
 uniform float u_riem8_scale, u_riem8_offA, u_riem8_offB, u_riem8_angleDeg;
+uniform vec2  u_riem8_cs;
 uniform vec3  u_riem8_adC;
 uniform mat3  u_riem8_rotMat;
 uniform int   u_riem8_rotEnabled, u_riem8_analyticDE, u_riem8_mandelbrotMode;
@@ -602,6 +612,7 @@ uniform vec3  u_b_multA, u_b_mult100, u_b_off000;
 uniform float u_b_scaleA1, u_b_scale1, u_b_scaleC1;
 uniform float u_b_rot1A, u_b_rot1B, u_b_rot1G;
 uniform float u_b_rot2A, u_b_rot2B, u_b_rot2G;
+uniform mat3  u_b_rot1Mat, u_b_rot2Mat;
 uniform float u_b_anDEscale, u_b_anDEoff;
 
 uniform vec4 u_bs_adc;
@@ -629,6 +640,7 @@ uniform float u_s_maxR2, u_s_inv0, u_s_inv1;
 uniform float u_s_anDEscale, u_s_anDEoff;
 uniform vec3  u_s_offset000, u_s_offset100, u_s_offset111, u_s_offsetA000;
 uniform vec3  u_s_addC000, u_s_rot44a, u_s_rot44b;
+uniform vec4  u_s_rotCS0, u_s_rotCS1, u_s_rotCS2;
 uniform vec4  u_s_offset1111, u_s_scale1111;
 uniform mat3  u_s_rot2Mat, u_s_rotMat;
 uniform int   u_s_preEnabled, u_s_absEnabled, u_s_scaleVerts, u_s_sphEnabled;
@@ -698,17 +710,60 @@ float mandelbulbIqV2DE(vec3 pos, out float trap) {
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
         trap = min(trap, r_safe);
-        float wi = (abs(z.x) + abs(z.y) > 1e-7) ? atan(z.x, z.y) : 0.0;
-        float wo = acos(clamp(z.z / r_safe, -1.0, 1.0));
-        float wr = pow(r_safe, u_power);
-        wo = wo * u_power * u_wo_scale;
-        wi = wi * u_power * u_wi_scale;
-        float swo = sin(wo);
-        z.x = swo * sin(wi);
-        z.z = cos(wo);
-        z.y = swo * cos(wi);
-        z *= wr;
-        dr = pow(r_safe, u_power - 1.0) * dr * u_power + 1.0;
+        bool fast8 = abs(u_power - 8.0) < 1e-5 &&
+                     abs(u_wo_scale - 1.0) < 1e-5 &&
+                     abs(u_wi_scale - 1.0) < 1e-5;
+        if (fast8) {
+            /* Trig-free power-8 polynomial (matches IQv2's x/y angle order). */
+            vec3 z2 = z * z;
+            vec3 z4 = z2 * z2;
+            float k3 = z2.x + z2.y;
+            float k3sq = k3 * k3;
+            float k3_7 = k3sq * k3sq * k3sq * k3;
+            float k2 = 1.0 / sqrt(max(k3_7, 1e-30));
+            float xy = z2.x * z2.y;
+            float k1 = z4.x + z4.y + z4.z - 6.0 * z2.z * k3 + 2.0 * xy;
+            float k4 = k3 - z2.z;
+            float k12 = k1 * k2;
+            float nx = 64.0 * z.x * z.y * z.z * k4 * (z2.x - z2.y)
+                     * (z4.x - 6.0 * xy + z4.y) * k12;
+            float ny = -8.0 * z.z * k4
+                     * (z4.x * z4.x - 28.0 * xy * (z4.x + z4.y)
+                        + 70.0 * z4.x * z4.y + z4.y * z4.y) * k12;
+            float nz = -16.0 * z2.z * k3 * k4 * k4 + k1 * k1;
+            z = vec3(nx, ny, nz);
+            float r2 = r_safe * r_safe;
+            float r4 = r2 * r2;
+            float rp = r4 * r2 * r_safe;
+            dr = rp * dr * 8.0 + 1.0;
+        } else {
+            float wi = (abs(z.x) + abs(z.y) > 1e-7) ? atan(z.x, z.y) : 0.0;
+            float wo = acos(clamp(z.z / r_safe, -1.0, 1.0));
+            float rp, wr;
+            if (abs(u_power - 2.0) < 1e-5) {
+                rp = r_safe; wr = r_safe * r_safe;
+            } else if (abs(u_power - 4.0) < 1e-5) {
+                float r2 = r_safe * r_safe;
+                rp = r2 * r_safe;
+                wr = r2 * r2;
+            } else if (abs(u_power - 8.0) < 1e-5) {
+                float r2 = r_safe * r_safe;
+                float r4 = r2 * r2;
+                rp = r4 * r2 * r_safe;
+                wr = r4 * r4;
+            } else {
+                rp = pow(r_safe, u_power - 1.0);
+                wr = rp * r_safe;
+            }
+            wo = wo * u_power * u_wo_scale;
+            wi = wi * u_power * u_wi_scale;
+            float swo = sin(wo);
+            z.x = swo * sin(wi);
+            z.z = cos(wo);
+            z.y = swo * cos(wi);
+            z *= wr;
+            dr = rp * dr * u_power + 1.0;
+        }
         z.z *= u_zz_scale;
         z += pos;
     }
@@ -1034,12 +1089,13 @@ float mandelbulbBermarteDE(vec3 pos, out float trap) {
         th0 = asin(clamp(z.z / r, -1.0, 1.0)) + u_mb_beta;
         ph0 = atan(z.y, z.x) * p * u_mb_bmScaleB;
         cth = cos(th0);
-        float zp = pow(r, p);
+        float rp = pow(r, p - 1.0);
+        float zp = rp * r;
         z = zp * vec3(cth * sin(ph0), cos(ph0) * cth, sin(th0));
         if (u_mb_postX == 1) z.x = abs(z.x);
         if (u_mb_postY == 1) z.y = abs(z.y);
 
-        dr = pow(r, p - 1.0) * p * dr + 1.0;
+        dr = rp * p * dr + 1.0;
         z += pos;
     }
     trap = trapv;
@@ -1122,10 +1178,11 @@ float mandelbulbKaliDE(vec3 pos, out float trap) {
 
         th = acos(clamp(z.z/max(length(z),1e-6), -1.0, 1.0)) + u_mb_beta;
         ph = atan(z.y, z.x) * p * u_mb_sB;
-        float zp = pow(r_safe, p);
+        float rp = pow(r_safe, p - 1.0);
+        float zp = rp * r_safe;
         sinth = sin(th);
         z = vec3(sinth*cos(ph), sin(ph)*sinth, cos(th)) * zp + pos;
-        dr = pow(r_safe, p - 1.0) * p * dr + 1.0;
+        dr = rp * p * dr + 1.0;
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
@@ -1149,10 +1206,11 @@ float mandelbulbKaliMultiDE(vec3 pos, out float trap) {
         z = vec3(cth*cos(ph), sin(ph)*cth, sin(th)) * r_safe;
         th = asin(clamp(z.z/max(length(z),1e-6), -1.0, 1.0)) + u_mb_beta;
         ph = atan(z.y, z.x) * p * 0.5 * u_mb_sB;
-        float zp = pow(r_safe, p);
+        float rp = pow(r_safe, p - 1.0);
+        float zp = rp * r_safe;
         cth = cos(th);
         z = vec3(cth*cos(ph), sin(ph)*cth, sin(th)) * zp + pos;
-        dr = pow(r_safe, p - 1.0) * p * dr + 1.0;
+        dr = rp * p * dr + 1.0;
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
@@ -1175,11 +1233,12 @@ float mandelbulbKosalosDE(vec3 pos, out float trap) {
         float xyL = sqrt(z.x*z.x + z.y*z.y);
         float theta = atan(xyL * tweak, z.z);
         float phi = atan(z.y, z.x) * u_power;
-        float pwr = pow(r_safe, u_power);
+        float rp = pow(r_safe, u_power - 1.0);
+        float pwr = rp * r_safe;
         float ss = sin(theta * u_power) * pwr;
         z += vec3(ss*cos(phi), ss*sin(phi), pwr*cos(theta*u_power)) + pos;
         z.z += u_mb_kosOffZ;
-        dr += pow(r_safe, u_power - 1.0) * u_power * dr;
+        dr += rp * u_power * dr;
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
@@ -1202,10 +1261,11 @@ float mandelbulbKosalosV2DE(vec3 pos, out float trap) {
         float xyL = sqrt(z.x*z.x + z.y*z.y);
         float theta = (atan(xyL * tweak, z.z) + u_mb_beta) * u_power;
         float phi = atan(z.y, z.x) * u_power;
-        float pwr = pow(r_safe, u_power);
+        float rp = pow(r_safe, u_power - 1.0);
+        float pwr = rp * r_safe;
         z += vec3(sin(theta)*pwr*cos(phi), sin(theta)*pwr*sin(phi), pwr*cos(theta)) + pos;
         z.z += u_mb_kosOffZ;
-        dr += pow(r_safe, u_power - 1.0) * u_power * dr;
+        dr += rp * u_power * dr;
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
@@ -1224,7 +1284,8 @@ float mandelbulbLambdaDE(vec3 pos, out float trap) {
         trapv = min(trapv, r_safe);
         float th0 = u_mb_beta + asin(clamp(z.z/r_safe, -1.0, 1.0));
         float ph0 = u_mb_alpha + atan(z.y, z.x);
-        float rp = pow(r_safe, u_power);
+        float rpBase = pow(r_safe, u_power - 1.0);
+        float rp = rpBase * r_safe;
         float th = th0 * u_power;
         float ph = ph0 * u_power;
         vec3 q = rp * vec3(cos(th)*cos(ph), sin(ph)*cos(th), sin(th));
@@ -1234,7 +1295,7 @@ float mandelbulbLambdaDE(vec3 pos, out float trap) {
         float a = 1.0 - z1.z*lc.z / max(r1*r2, 1e-9);
         z = vec3(a*(z1.x*lc.x - z1.y*lc.y), a*(lc.x*z1.y + z1.x*lc.y),
                  r2*z1.z + r1*lc.z) + pos;
-        dr = max(dr, pow(r_safe, u_power - 1.0) * dr * u_power + 1.0);
+        dr = max(dr, rpBase * dr * u_power + 1.0);
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
@@ -1436,16 +1497,29 @@ float mandelbulbPower1234DE(vec3 pos, out float trap) {
         vec3 new1 = z;
         float rp = r_safe;
         float p2 = rp * rp;
-        float th2 = th0*2.0*u_mb_sA, ph2 = ph0*2.0*u_mb_sB;
-        vec3 new2 = p2 * vec3(cos(th2)*cos(ph2), sin(ph2)*cos(th2), sin(th2));
+        float a1 = th0 * u_mb_sA;
+        float b1 = ph0 * u_mb_sB;
+        float ca1 = cos(a1), sa1 = sin(a1);
+        float cb1 = cos(b1), sb1 = sin(b1);
+        float ca2 = ca1*ca1 - sa1*sa1;
+        float sa2 = 2.0*sa1*ca1;
+        float cb2 = cb1*cb1 - sb1*sb1;
+        float sb2 = 2.0*sb1*cb1;
+        float ca3 = ca2*ca1 - sa2*sa1;
+        float sa3 = sa2*ca1 + ca2*sa1;
+        float cb3 = cb2*cb1 - sb2*sb1;
+        float sb3 = sb2*cb1 + cb2*sb1;
+        float ca4 = ca2*ca2 - sa2*sa2;
+        float sa4 = 2.0*sa2*ca2;
+        float cb4 = cb2*cb2 - sb2*sb2;
+        float sb4 = 2.0*sb2*cb2;
+        vec3 new2 = p2 * vec3(ca2*cb2, sb2*ca2, sa2);
         float de2 = rp * dr * 2.0 + 1.0;
         rp *= r_safe;
-        float th3 = th0*3.0*u_mb_sA, ph3 = ph0*3.0*u_mb_sB;
-        vec3 new3 = rp * r_safe * vec3(cos(th3)*cos(ph3), sin(ph3)*cos(th3), sin(th3));
+        vec3 new3 = rp * r_safe * vec3(ca3*cb3, sb3*ca3, sa3);
         float de3 = p2 * dr * 3.0 + 1.0;
         rp *= r_safe;
-        float th4 = th0*4.0*u_mb_sA, ph4 = ph0*4.0*u_mb_sB;
-        vec3 new4 = rp * r_safe * vec3(cos(th4)*cos(ph4), sin(ph4)*cos(th4), sin(th4));
+        vec3 new4 = rp * r_safe * vec3(ca4*cb4, sb4*ca4, sa4);
         float de4 = rp * dr * 4.0 + 1.0;
         z = new1 + new2 + new3 + new4 + pos;
         dr = abs(1.0 + de2 + de3 + de4);
@@ -1759,9 +1833,9 @@ float xenodreambuieDE(vec3 pos, out float trap) {
         float ph = (atan(z.y, z.x) + u_xeno_alpha) * u_power * u_xeno_sB;
         float rp = pow(r_safe, u_power - u_xeno_expOff);
         dr = rp * dr * abs(u_power) + 1.0;
-        if (cos(th) < 0.0) ph += 3.14159265358979;
-        rp *= r_safe;
         float ct = cos(th);
+        if (ct < 0.0) ph += 3.14159265358979;
+        rp *= r_safe;
         z.x = ct * cos(ph) * rp;
         z.y = ct * sin(ph) * rp;
         z.z = sin(th)  * rp;
@@ -1823,8 +1897,8 @@ float xenodreambuieV3DE(vec3 pos, out float trap) {
         dr = rp * dr * abs(u_power) + u_xeno_deOff;
         rp *= r_safe;
 
-        if (cos(th) < 0.0) ph += 3.14159265358979;
         float cth = cos(th);
+        if (cth < 0.0) ph += 3.14159265358979;
         z.x = cth * cos(ph) * rp;
         z.y = cth * sin(ph) * rp;
         z.z = sin(th) * rp;
@@ -1890,11 +1964,9 @@ float riemannHoboldDE(vec3 pos, out float trap) {
         float n2y = -Kz;
         float n2z = KyZ - 1.0 + u_riem_offB;
         if (u_riem_angleDeg != 0.0) {
-            float beta = u_riem_angleDeg * 0.017453292519943295;
-            float cB = cos(beta), sB = sin(beta);
             float tX = n1x, tZ = n2z;
-            n1x = tX*cB + tZ*sB;
-            n2z = -tX*sB + tZ*cB;
+            n1x = tX*u_riem_cs.x + tZ*u_riem_cs.y;
+            n2z = -tX*u_riem_cs.y + tZ*u_riem_cs.x;
         }
         float num = 2.0 * n1x*n1x * n2z*n2z;
         float den = (n1x*n1x + n1y*n1y)*n2z*n2z + n1x*n1x*n2y*n2y;
@@ -1904,16 +1976,17 @@ float riemannHoboldDE(vec3 pos, out float trap) {
         float ry = 1.0 - z.y;
         z.x = (abs(n1x) < 1e-9) ? 0.0 : n1y * ry / n1x;
         z.z = (abs(n2z) < 1e-9) ? 0.0 : n2y * ry / n2z;
-        z *= pow(r_safe, u_power * 0.5);
+        float hp = u_power * 0.5;
+        float rp = pow(r_safe, hp - 1.0);
+        z *= rp * r_safe;
         z += u_riem_adC;
         if (u_riem_rotEnabled == 1) z = u_riem_rotMat * z;
         if (u_riem_analyticDE == 1) {
             dr = u_riem_deOffset + dr * abs(u_riem_scale) / r_safe;
             dr *= 8.0 * u_riem_deScale * length(z) / r_safe;
         } else {
-            float p = u_power * 0.5;
-            if (p > 1e-3) dr = p * pow(r_safe, p - 1.0) * dr + 1.0;
-            else          dr = 1.0;
+            if (hp > 1e-3) dr = hp * rp * dr + 1.0;
+            else           dr = 1.0;
         }
     }
     float r_safe = max(r, 1e-6);
@@ -1951,11 +2024,9 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
         float n2y = -K2z;
         float n2z = K2yz - 1.0 + u_riem8_offB;
         if (u_riem8_angleDeg != 0.0) {
-            float beta = u_riem8_angleDeg * 0.017453292519943295;
-            float cB = cos(beta), sB = sin(beta);
             float tX = n1x, tZ = n2z;
-            n1x = tX*cB + tZ*sB;
-            n2z = -tX*sB + tZ*cB;
+            n1x = tX*u_riem8_cs.x + tZ*u_riem8_cs.y;
+            n2z = -tX*u_riem8_cs.y + tZ*u_riem8_cs.x;
         }
         float num = 2.0 * n1x*n1x * n2z*n2z;
         float den = (n1x*n1x + n1y*n1y)*n2z*n2z + n1x*n1x*n2y*n2y;
@@ -1965,7 +2036,10 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
         float ry = 1.0 - z.y;
         z.x = (abs(n1x) < 1e-9) ? 0.0 : n1y * ry / n1x;
         z.z = (abs(n2z) < 1e-9) ? 0.0 : n2y * ry / n2z;
-        z *= r_safe * r_safe * r_safe * r_safe;
+        float r2 = r_safe * r_safe;
+        float r3 = r2 * r_safe;
+        float r4 = r2 * r2;
+        z *= r4;
         vec3 cval = (u_riem8_mandelbrotMode == 1) ? pos : u_riem8_adC;
         z += cval;
         if (u_riem8_rotEnabled == 1) z = u_riem8_rotMat * z;
@@ -1973,7 +2047,7 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
             dr = u_riem8_deOffset + dr * abs(u_riem8_scale) / r_safe;
             dr *= 8.0 * u_riem8_deScale * length(z) / r_safe;
         } else {
-            dr = pow(r_safe, 7.0) * dr * 8.0 + 1.0;
+            dr = (r4 * r3) * dr * 8.0 + 1.0;
         }
     }
     float r_safe = max(r, 1e-6);
@@ -2014,11 +2088,9 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
         float n2z = Kyz - 1.0 + u_riem_offB;
 
         if (u_riem_angleDeg != 0.0) {
-            float beta = u_riem_angleDeg * 0.017453292519943295;
-            float cB = cos(beta), sB = sin(beta);
             float tX = n1x, tZ = n2z;
-            n1x = tX*cB + tZ*sB;
-            n2z = -tX*sB + tZ*cB;
+            n1x = tX*u_riem_cs.x + tZ*u_riem_cs.y;
+            n2z = -tX*u_riem_cs.y + tZ*u_riem_cs.x;
         }
         float num = 2.0 * n1x*n1x * n2z*n2z;
         float den = (n1x*n1x + n1y*n1y)*n2z*n2z + n1x*n1x*n2y*n2y;
@@ -2028,14 +2100,15 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
         float ry = 1.0 - z.y;
         z.x = (abs(n1x) < 1e-9) ? 0.0 : n1y * ry / n1x;
         z.z = (abs(n2z) < 1e-9) ? 0.0 : n2y * ry / n2z;
-        z *= r_safe * r_safe;
+        float r2 = r_safe * r_safe;
+        z *= r2;
         z += u_riem_adC;
         if (u_riem_rotEnabled == 1) z = u_riem_rotMat * z;
         if (u_riem_analyticDE == 1) {
             dr = u_riem_deOffset + dr * abs(u_riem_scale) / r_safe;
             dr *= 4.0 * u_riem_deScale * length(z) / r_safe;
         } else {
-            dr = pow(r_safe, 3.0) * dr * 4.0 + 1.0;
+            dr = (r2 * r_safe) * dr * 4.0 + 1.0;
         }
     }
     float r_safe = max(r, 1e-6);
@@ -2117,7 +2190,8 @@ float msltoeV1DE(vec3 pos, out float trap) {
         float y1 = r1 * sin(theta);
         float rr = (z.x - x1)*(z.x - x1) + (z.y - y1)*(z.y - y1) + z.z*z.z;
         float phi = asin(clamp(z.z / max(sqrt(max(rr, 1e-12)), 1e-9), -1.0, 1.0));
-        float rp = pow(max(rr, 1e-12), 4.0);
+        float rr2 = rr * rr;
+        float rp = rr2 * rr2;
         phi *= u_ms_phiPower;
         theta *= u_ms_power;
         float ct = cos(theta), st = sin(theta);
@@ -2390,33 +2464,35 @@ float aexion4dDE(vec3 pos, out float trap) {
     float trapv = 1e10;
     float rPixel = max(length(pos), 1e-9);
     trapv = max(rPixel, 1e-6);
-    for (int i = 0; i < 32; i++) {
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trapv = min(trapv, rPixel);
+        vec4 tq = vec4(pos.x + pos.y + pos.z, -pos.x - pos.y + pos.z,
+                       -pos.x + pos.y - pos.z, pos.x - pos.y - pos.z);
+        tq = abs(tq) + vec4(u_ax_cadd) + u_ax_domainOffset;
+        if (u_ax_absFirst == 1) tq = abs(tq);
+        constC = tq * u_ax_cpixel;
+        float t0 = length(tq);
+        if (u_ax_initQuadray == 1) {
+            z = tq;
+            dr *= clamp(t0 / rPixel, 1e-3, 1e3) * u_ax_anDEscale;
+        } else z = vec4(0.0);
+        dr = dr * 2.0 * t0 + 1.0;
+        vec4 q0 = quadQuad(z);
+        dr = dr * u_ax_scale + u_ax_anDEoff0;
+        z = q0 + constC;
+        escaped = dot(z, z) > u_bailout2;
+    }
+    for (int i = 1; i < 32 && !escaped; i++) {
         if (i >= u_max_iter) break;
-        float r_cur;
-        if (i == 0) {
-            trapv = min(trapv, rPixel);
-            vec4 tq = vec4(pos.x + pos.y + pos.z, -pos.x - pos.y + pos.z,
-                           -pos.x + pos.y - pos.z, pos.x - pos.y - pos.z);
-            tq = abs(tq) + vec4(u_ax_cadd) + u_ax_domainOffset;
-            if (u_ax_absFirst == 1) tq = abs(tq);
-            constC = tq * u_ax_cpixel;
-            float t0 = length(tq);
-            if (u_ax_initQuadray == 1) {
-                z = tq;
-                dr *= clamp(t0 / rPixel, 1e-3, 1e3) * u_ax_anDEscale;
-            } else z = vec4(0.0);
-            r_cur = t0;
-        } else {
-            r_cur = length(z);
-            trapv = min(trapv, max(r_cur, 1e-6));
-        }
+        float r_cur = length(z);
+        trapv = min(trapv, max(r_cur, 1e-6));
         dr = dr * 2.0 * r_cur + 1.0;
         vec4 q = quadQuad(z);
         dr = dr * u_ax_scale + u_ax_anDEoff0;
         z = q + constC;
 
-        /* Escape check, matching Mandelbulber (after the iteration) */
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
     float rFinal = max(length(z), 1e-6);
     trap = trapv;
@@ -2429,24 +2505,32 @@ float aexionDE(vec3 pos, out float trap) {
     vec4 constC = vec4(0.0);
     float dr = 1.0;
     float trapv = max(length(pos), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        float r_cur = length(z);
-        if (r_cur > u_bailout) break;
-        trapv = min(trapv, max(r_cur, 1e-6));
-
-        if (i == 0) {
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        float r0 = length(z);
+        if (r0 > u_bailout) {
+            escaped = true;
+        } else {
+            trapv = min(trapv, max(r0, 1e-6));
             vec4 tq = vec4(z.x + z.y + z.z, -z.x - z.y + z.z,
                            -z.x + z.y - z.z, z.x - z.y - z.z);
             z = abs(tq) + vec4(u_ax_cadd);
             constC = z;
-            r_cur = length(z);
-            trapv = min(trapv, max(r_cur, 1e-6));
+            r0 = length(z);
+            trapv = min(trapv, max(r0, 1e-6));
+            dr = dr * 2.0 * max(r0, 1e-6) + 1.0;
+            z = quadQuad(z) + constC;
+            escaped = dot(z, z) > u_bailout2;
         }
-
+    }
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        float r_cur = length(z);
+        if (r_cur > u_bailout) break;
+        trapv = min(trapv, max(r_cur, 1e-6));
         dr = dr * 2.0 * max(r_cur, 1e-6) + 1.0;
         z = quadQuad(z) + constC;
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
     float rFinal = max(length(z), 1e-6);
     trap = trapv;
@@ -2494,7 +2578,7 @@ float benesiPwr2MandelbulbDE(vec3 pos, out float trap) {
             z = abs(z) * vec4(u_b_scale222.x, u_b_scale222.y, u_b_scale222.z, 1.0);
             float avgScale = length(z) / max(tempL, 1e-21);
             dr = dr * avgScale + 1.0;
-            if (u_b_t1RotEnabled == 1) z.xyz = rot3D(z.xyz, u_b_rot1A, u_b_rot1B, u_b_rot1G);
+            if (u_b_t1RotEnabled == 1) z.xyz = u_b_rot1Mat * z.xyz;
             tempXZ = (z.y + z.x) * SQRT_1_2;
             z = vec4(
                 z.z * SQRT_1_3 + tempXZ * SQRT_2_3,
@@ -2555,7 +2639,7 @@ float benesiPwr2MandelbulbDE(vec3 pos, out float trap) {
             z.xyz += u_b_off000;
         }
 
-        if (u_b_rot2Enabled == 1) z.xyz = rot3D(z.xyz, u_b_rot2A, u_b_rot2B, u_b_rot2G);
+        if (u_b_rot2Enabled == 1) z.xyz = u_b_rot2Mat * z.xyz;
 
         if (u_b_anDEEnabled == 1) dr = dr * u_b_anDEscale + u_b_anDEoff;
     }
@@ -2620,15 +2704,13 @@ float aboxMod11DE(vec3 pos, out float trap) {
     vec4 constC = vec4(pos, 0.0);
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trapv = 1e10;
+    float trap2 = 1e20;
 
-    trapv = max(length(z), 1e-6);
+    trap2 = dot(z, z);
 
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        float r_cur = length(z);
-        float r_safe = max(r_cur, 1e-6);
-        trapv = min(trapv, r_safe);
+        trap2 = min(trap2, dot(z, z));
 
         /* DarkBeam's scale vary */
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
@@ -2705,11 +2787,11 @@ float aboxMod11DE(vec3 pos, out float trap) {
         if (u_ab_addC == 1) z.xyz += constC.xyz;
 
         /* Escape check, matching Mandelbulber (after the iteration and c add) */
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
 
     float rFinal = max(length(z), 1e-6);
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     /* Abox is a linear-DE fractal: distance = r / DE */
     return rFinal / max(dr, 1e-6);
 }
@@ -2720,12 +2802,11 @@ float aboxMod1DE(vec3 pos, out float trap) {
     vec4 c = vec4(pos, 0.0);
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trapv = max(length(z), 1e-6);
+    float trap2 = dot(z, z);
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        float r = length(z);
-        if (r > u_bailout) break;
-        trapv = min(trapv, max(r, 1e-6));
+        if (dot(z, z) > u_bailout2) break;
+        trap2 = min(trap2, dot(z, z));
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
         float fold = 1.0;
@@ -2748,6 +2829,7 @@ float aboxMod1DE(vec3 pos, out float trap) {
         if (u_ab_addC == 1) z.xyz += c.xyz;
         if (u_ab_rotEnabled == 1) z.xyz = u_ab_rotMat * z.xyz;
     }
+    trap = max(sqrt(trap2), 1e-6);
     return length(z) / max(dr, 1e-6);
 }
 
@@ -2757,12 +2839,11 @@ float aboxMod2DE(vec3 pos, out float trap) {
     vec4 c = vec4(pos, 0.0);
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trapv = max(length(z), 1e-6);
+    float trap2 = dot(z, z);
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        float r = length(z);
-        if (r > u_bailout) break;
-        trapv = min(trapv, max(r, 1e-6));
+        if (dot(z, z) > u_bailout2) break;
+        trap2 = min(trap2, dot(z, z));
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
         z.x = abs(z.x + u_ab_add111.x) - abs(z.x - u_ab_add111.x) - z.x;
@@ -2786,6 +2867,7 @@ float aboxMod2DE(vec3 pos, out float trap) {
         if (u_ab_addC == 1) z.xyz += c.xyz;
         if (u_ab_rotEnabled == 1) z.xyz = u_ab_rotMat * z.xyz;
     }
+    trap = max(sqrt(trap2), 1e-6);
     return length(z) / max(dr, 1e-6);
 }
 
@@ -2795,12 +2877,11 @@ float aboxMB3D1DE(vec3 pos, out float trap) {
     vec4 c = vec4(pos, 0.0);
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trapv = max(length(z), 1e-6);
+    float trap2 = dot(z, z);
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        float r = length(z);
-        if (r > u_bailout) break;
-        trapv = min(trapv, max(r, 1e-6));
+        if (dot(z, z) > u_bailout2) break;
+        trap2 = min(trap2, dot(z, z));
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
         float fold = 1.0;
@@ -2821,6 +2902,7 @@ float aboxMB3D1DE(vec3 pos, out float trap) {
         if (u_ab_addC == 1) { z.x += c.y; z.y += c.x; z.z += c.z; }
         if (u_ab_rotEnabled == 1) z.xyz = u_ab_rotMat * z.xyz;
     }
+    trap = max(sqrt(trap2), 1e-6);
     return length(z) / max(dr, 1e-6);
 }
 
@@ -2830,13 +2912,12 @@ float abox4dDE(vec3 pos, out float trap) {
     vec4 c = vec4(pos, 0.0);
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trapv = max(length(z), 1e-6);
+    float trap2 = dot(z, z);
     vec4 off1111 = vec4(u_ab_add111, 1.0);
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        float r = length(z);
-        if (r > u_bailout) break;
-        trapv = min(trapv, max(r, 1e-6));
+        if (dot(z, z) > u_bailout2) break;
+        trap2 = min(trap2, dot(z, z));
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
         z = abs(z + off1111) - abs(z - off1111) - z;
@@ -2853,6 +2934,7 @@ float abox4dDE(vec3 pos, out float trap) {
         z += c;
         z.xyz += u_ab_add000;
     }
+    trap = max(sqrt(trap2), 1e-6);
     return length(z) / max(dr, 1e-6);
 }
 
@@ -2862,12 +2944,12 @@ float amazingSurfDE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float actualScale = u_as_scale;
-    float trapv = max(length(z), 1e-6);
+    float trap2 = dot(z, z);
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        float r = length(z);
-        if (r > u_bailout) break;
-        trapv = min(trapv, max(r, 1e-6));
+        float r2 = dot(z, z);
+        if (r2 > u_bailout2) break;
+        trap2 = min(trap2, r2);
         actualScale = u_as_scale + u_as_scaleVary * (abs(actualScale) - 1.0);
 
         z.x = abs(z.x + u_as_add111.x) - abs(z.x - u_as_add111.x) - z.x;
@@ -2882,7 +2964,7 @@ float amazingSurfDE(vec3 pos, out float trap) {
         dr = dr * abs(m) + 1.0;
         if (u_as_addC == 1) z += vec3(c.y, c.x, c.z) * u_as_cMult;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return length(z) / max(dr, 1e-6);
 }
 
@@ -2892,12 +2974,12 @@ float amazingSurfM3dDE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float actualScale = u_as_scale;
-    float trapv = max(length(z), 1e-6);
+    float trap2 = dot(z, z);
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        float r = length(z);
-        if (r > u_bailout) break;
-        trapv = min(trapv, max(r, 1e-6));
+        float r2 = dot(z, z);
+        if (r2 > u_bailout2) break;
+        trap2 = min(trap2, r2);
         actualScale = u_as_scale + u_as_scaleVary * (abs(actualScale) - 1.0);
 
         z.x = abs(z.x + u_as_add111.x) - abs(z.x - u_as_add111.x) - z.x;
@@ -2915,7 +2997,7 @@ float amazingSurfM3dDE(vec3 pos, out float trap) {
         if (u_as_addC == 1) z += vec3(c.x, c.y, c.z) * u_as_cMult;
         z += u_as_offA000;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return length(z) / max(dr, 1e-6);
 }
 
@@ -2923,12 +3005,11 @@ float amazingSurfM3dDE(vec3 pos, out float trap) {
 float sierpinski3dDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
-    float trapv = 1e10;
+    float trap2 = 1e20;
 
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        float r_cur = length(z);
-        trapv = min(trapv, max(r_cur, 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* Normal full tetra-fold (B) */
         if (u_sp_normalFold == 1) {
@@ -2968,11 +3049,11 @@ float sierpinski3dDE(vec3 pos, out float trap) {
             dr = dr * abs(u_sp_scaleA2);
 
         /* Escape check, matching Mandelbulber (after the iteration) */
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
 
     float rFinal = max(length(z), 1e-6);
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     /* Mandelbulber's IFS DE: (r - 2) / DE */
     return (rFinal - 2.0) / max(dr, 1e-6);
 }
@@ -2981,11 +3062,11 @@ float sierpinski3dDE(vec3 pos, out float trap) {
 float sierpinski3dV2DE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
-    float trapv = 1e10;
+    float trap2 = 1e20;
 
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* Pre-transform T: offset 000 + rotation 2 */
         if (u_s_preEnabled == 1 && i >= u_s_startT && i < u_s_stopT1) {
@@ -3051,11 +3132,11 @@ float sierpinski3dV2DE(vec3 pos, out float trap) {
             dr = dr * u_s_anDEscale + u_s_anDEoff;
 
         /* Escape check, matching Mandelbulber (after the iteration) */
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
 
     float rFinal = max(length(z), 1e-6);
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return (rFinal - 2.0) / max(dr, 1e-6);
 }
 
@@ -3063,11 +3144,11 @@ float sierpinski3dV2DE(vec3 pos, out float trap) {
 float sierpinski3dV3DE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
-    float trapv = 1e10;
+    float trap2 = 1e20;
 
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* Pre-transform T */
         if (u_s_preEnabled == 1 && i >= u_s_startT && i < u_s_stopT1) {
@@ -3100,11 +3181,11 @@ float sierpinski3dV3DE(vec3 pos, out float trap) {
             dr *= abs(u_s_scaleA2);
 
         /* Escape check, matching Mandelbulber (after the iteration) */
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
 
     float rFinal = max(length(z), 1e-6);
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return (rFinal - 2.0) / max(dr, 1e-6);
 }
 
@@ -3112,11 +3193,11 @@ float sierpinski3dV3DE(vec3 pos, out float trap) {
 float sierpinski3dV4DE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
-    float trapv = 1e10;
+    float trap2 = 1e20;
 
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* Sphere inversion (D) */
         if (u_s_sphEnabled == 1 && i >= u_s_startD && i < u_s_stopD1) {
@@ -3167,11 +3248,11 @@ float sierpinski3dV4DE(vec3 pos, out float trap) {
             dr *= abs(u_s_scaleA2);
 
         /* Escape check, matching Mandelbulber (after the iteration) */
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
 
     float rFinal = max(length(z), 1e-6);
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return (rFinal - 2.0) / max(dr, 1e-6);
 }
 
@@ -3179,63 +3260,58 @@ float sierpinski3dV4DE(vec3 pos, out float trap) {
 float sierpinski4dDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
-    float trapv = 1e10;
+    float trap2 = 1e20;
 
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
-        /* Six plane folds (normal tetrahedron in 4D) */
-        if (z.x + z.y < 0.0) { float t = z.x; z.x = -z.y; z.y = -t; }
-        if (z.x + z.z < 0.0) { float t = z.x; z.x = -z.z; z.z = -t; }
-        if (z.y + z.z < 0.0) { float t = z.z; z.z = -z.y; z.y = -t; }
-        if (z.x + z.w < 0.0) { float t = z.x; z.x = -z.w; z.w = -t; }
-        if (z.y + z.w < 0.0) { float t = z.y; z.y = -z.w; z.w = -t; }
-        if (z.z + z.w < 0.0) { float t = z.z; z.z = -z.w; z.w = -t; }
+        /* Six plane folds (normal tetrahedron in 4D), branchless. */
+        float fd;
+        fd = min(0.0, z.x + z.y); z.x -= fd; z.y -= fd;
+        fd = min(0.0, z.x + z.z); z.x -= fd; z.z -= fd;
+        fd = min(0.0, z.y + z.z); z.y -= fd; z.z -= fd;
+        fd = min(0.0, z.x + z.w); z.x -= fd; z.w -= fd;
+        fd = min(0.0, z.y + z.w); z.y -= fd; z.w -= fd;
+        fd = min(0.0, z.z + z.w); z.z -= fd; z.w -= fd;
 
         z *= u_s_scaleA2;
 
         if (i >= u_s_startC && i < u_s_stopC)
             z -= u_s_offset1111;
 
-        /* Six-plane 4D rotation (R) */
+        /* Six-plane 4D rotation (R), cos/sin pairs precomputed on the CPU. */
         if (u_s_rotEnabled == 1 && i >= u_s_startR && i < u_s_stopR) {
             vec4 tp;
             if (u_s_rot44a.x != 0.0) {
                 tp = z;
-                float alpha = u_s_rot44a.x * 0.01745329252;
-                z.x = tp.x * cos(alpha) + tp.y * sin(alpha);
-                z.y = tp.x * (-sin(alpha)) + tp.y * cos(alpha);
+                z.x = tp.x * u_s_rotCS0.x + tp.y * u_s_rotCS0.y;
+                z.y = tp.x * (-u_s_rotCS0.y) + tp.y * u_s_rotCS0.x;
             }
             if (u_s_rot44a.y != 0.0) {
                 tp = z;
-                float beta = u_s_rot44a.y * 0.01745329252;
-                z.y = tp.y * cos(beta) + tp.z * sin(beta);
-                z.z = tp.y * (-sin(beta)) + tp.z * cos(beta);
+                z.y = tp.y * u_s_rotCS0.z + tp.z * u_s_rotCS0.w;
+                z.z = tp.y * (-u_s_rotCS0.w) + tp.z * u_s_rotCS0.z;
             }
             if (u_s_rot44a.z != 0.0) {
                 tp = z;
-                float gamma = u_s_rot44a.z * 0.01745329252;
-                z.x = tp.x * cos(gamma) + tp.z * sin(gamma);
-                z.z = tp.x * (-sin(gamma)) + tp.z * cos(gamma);
+                z.x = tp.x * u_s_rotCS1.x + tp.z * u_s_rotCS1.y;
+                z.z = tp.x * (-u_s_rotCS1.y) + tp.z * u_s_rotCS1.x;
             }
             if (u_s_rot44b.x != 0.0) {
                 tp = z;
-                float delta = u_s_rot44b.x * 0.01745329252;
-                z.x = tp.x * cos(delta) + tp.w * sin(delta);
-                z.w = tp.x * (-sin(delta)) + tp.w * cos(delta);
+                z.x = tp.x * u_s_rotCS1.z + tp.w * u_s_rotCS1.w;
+                z.w = tp.x * (-u_s_rotCS1.w) + tp.w * u_s_rotCS1.z;
             }
             if (u_s_rot44b.y != 0.0) {
                 tp = z;
-                float epsilon = u_s_rot44b.y * 0.01745329252;
-                z.y = tp.y * cos(epsilon) + tp.w * sin(epsilon);
-                z.w = tp.y * (-sin(epsilon)) + tp.w * cos(epsilon);
+                z.y = tp.y * u_s_rotCS2.x + tp.w * u_s_rotCS2.y;
+                z.w = tp.y * (-u_s_rotCS2.y) + tp.w * u_s_rotCS2.x;
             }
             if (u_s_rot44b.z != 0.0) {
                 tp = z;
-                float zeta = u_s_rot44b.z * 0.01745329252;
-                z.z = tp.z * cos(zeta) + tp.w * sin(zeta);
-                z.w = tp.z * (-sin(zeta)) + tp.w * cos(zeta);
+                z.z = tp.z * u_s_rotCS2.z + tp.w * u_s_rotCS2.w;
+                z.w = tp.z * (-u_s_rotCS2.w) + tp.w * u_s_rotCS2.z;
             }
         }
 
@@ -3245,11 +3321,11 @@ float sierpinski4dDE(vec3 pos, out float trap) {
             dr *= abs(u_s_scaleA2);
 
         /* Escape check, matching Mandelbulber (after the iteration) */
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
 
     float rFinal = max(length(z), 1e-6);
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return (rFinal - 2.0) / max(dr, 1e-6);
 }
 
@@ -3285,10 +3361,10 @@ void kPseudoCore(inout vec3 z, inout float dr, bool useScaleB1, bool addTweak) {
 }
 
 float kleinianStdDEDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* tetrahedral M-fold (transf_function_enabled, default on) */
         z = abs(z);
@@ -3305,70 +3381,70 @@ float kleinianStdDEDE(vec3 pos, out float trap) {
         kPseudoCore(z, dr, true, true);
         z += u_k_add000;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return length(z.xy) / max(dr, 1e-9);
 }
 
 float kleinianPseudoDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         kPseudoCore(z, dr, false, true);
         z += u_k_add000;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return kPKDistance(z, dr);
 }
 
 float kleinianMod1DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         kPseudoCore(z, dr, true, true);
         z += u_k_add000;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return kPKDistance(z, dr);
 }
 
 float kleinianMod2DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         kPseudoCore(z, dr, false, true);
         z += u_k_add000;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return kPKDistance(z, dr);
 }
 
 float kleinianMod3DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* box offset (constantMultiplier000 defaults to 0, so no-op) */
         kPseudoCore(z, dr, false, false);
         z += u_k_add000;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
 
     vec3 zz = z * z;
     float d1 = sqrt(min(min(zz.x + zz.y, zz.y + zz.z), zz.z + zz.x));
@@ -3379,10 +3455,10 @@ float kleinianMod3DE(vec3 pos, out float trap) {
 }
 
 float kleinianMod4DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z + u_k_csize) - abs(z - u_k_csize) - z;
         float k = max(u_k_minR05 / max(dot(z, z), 1e-9), 1.0);
@@ -3390,17 +3466,17 @@ float kleinianMod4DE(vec3 pos, out float trap) {
         dr *= k + u_k_tweak;
         z += u_k_add000;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return kPKDistance(z, dr);
 }
 
 float kleinianMod5DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* unconditional H-block modular wrap (functionEnabledCx/Cy/Cz) */
         if (abs(u_k_add222.x) > 1e-9) z.x -= u_k_add222.x * round(z.x / u_k_add222.x);
@@ -3410,8 +3486,8 @@ float kleinianMod5DE(vec3 pos, out float trap) {
         /* pNorm scaling (scale2, scaleA2, offset02, scale1p1) */
         float pr = max(u_k_scale2, 1e-3);
         vec3 lpN = pow(abs(z), vec3(pr));
-        float pNorm = pow(lpN.x + lpN.y + lpN.z, 1.0 / pr);
-        pNorm = pow(max(pNorm, 1e-9), u_k_scaleA2);
+        float sumN = lpN.x + lpN.y + lpN.z;
+        float pNorm = pow(max(sumN, 1e-27), u_k_scaleA2 / pr);
         pNorm = max(pNorm, u_k_offset02);
         float useScale = u_k_scale1p1;
         pNorm = useScale / max(pNorm, 1e-9);
@@ -3419,17 +3495,17 @@ float kleinianMod5DE(vec3 pos, out float trap) {
         dr *= abs(pNorm);
         dr *= 1.0 + u_k_tweak;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return kPKDistance(z, dr);
 }
 
 float kleinianMod6DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float dist = 1000.0;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* Dk and the custom DE are recomputed for every outer iteration
            (Mandelbulber calls the iteration function once per i). */
@@ -3451,17 +3527,17 @@ float kleinianMod6DE(vec3 pos, out float trap) {
         de0 = abs(de0) / max(Dk, 1e-9) - u_k_anDEoff0;
         dist = de0;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return dist;
 }
 
 float kleinianMod7DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float dist = 1000.0;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z + u_k_box) - abs(z - u_k_box) - z;
         vec3 signs = sign(z);
@@ -3485,26 +3561,26 @@ float kleinianMod7DE(vec3 pos, out float trap) {
                    / max(dr, 1e-9) - u_k_offsetB0;
         dist = min(dist, tp);
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return dist;
 }
 
 float kleinian4dDE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trapv = 1e10;
+    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z + u_k_off1111) - abs(z - u_k_off1111) - z;
         float k = max(u_k_scale1 / max(dot(z, z), 1e-9), 1.0);
         z *= k;
         dr *= k + u_k_tweak;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
 
     vec4 zz = z * z;
     float d1 = sqrt(zz.x + zz.y + zz.w);
@@ -3528,10 +3604,10 @@ void kTrigTransform(vec3 zin, out vec3 zout, out float cx, out float cy, out flo
 }
 
 float kleinianTrigDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float temp1000 = 1000.0;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float temp1000 = 1000.0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         /* fold: z -= offsetA000 (defaults to 0) */
         z -= u_k_offsetA000;
@@ -3551,17 +3627,17 @@ float kleinianTrigDE(vec3 pos, out float trap) {
         dr = dr * u_k_anDEscale * stretch + u_k_anDEoff0;
         temp1000 = min(temp1000, 1.0 / max(dr, 1e-9));
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return temp1000;
 }
 
 float kleinianTrigV2DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float dist = 1000.0;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z -= u_k_offsetA000;
 
@@ -3588,17 +3664,17 @@ float kleinianTrigV2DE(vec3 pos, out float trap) {
         dst /= max(dr, 1e-9);
         dist = min(dist, dst);
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return dist;
 }
 
 float kleinianTrigV3DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float de0 = 0.0;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float de0 = 0.0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z -= u_k_offsetA000;
 
@@ -3622,9 +3698,9 @@ float kleinianTrigV3DE(vec3 pos, out float trap) {
         dr *= S;
         de0 = max(de0, dr);
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return 1.0 / sqrt(max(de0, 1e-9));
 }
 
@@ -3635,10 +3711,10 @@ float josPKDistance(vec3 z, float dr) {
 }
 
 float josKleinianDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         vec3 boxSize = u_k_box;
         float a = u_k_folding;
@@ -3658,18 +3734,18 @@ float josKleinianDE(vec3 pos, out float trap) {
         z.y = a + z.y;
         dr *= abs(iR);
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return josPKDistance(z, dr);
 }
 
 float josKleinianV2DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     float c = u_k_offsetA0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         vec3 boxSize = u_k_box;
         float a = u_k_folding;
@@ -3693,17 +3769,17 @@ float josKleinianV2DE(vec3 pos, out float trap) {
         z.y = a + z.y;
         z.z = -z.z - c;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return josPKDistance(z, dr);
 }
 
 float josKleinianV3DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float dist = 1000.0;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         vec3 boxSize = u_k_box;
         float a = u_k_folding;
@@ -3738,17 +3814,17 @@ float josKleinianV3DE(vec3 pos, out float trap) {
         if (u_k_spheresEnabled == 1) Ztemp = min(z.z, u_k_folding - z.z);
         dist = min(Ztemp + u_k_anDEoff0, u_k_tweak) / max(dr, u_k_offset1);
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return dist;
 }
 
 float josKleinianV4DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float dist = 1000.0;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         vec3 boxSize = u_k_box;
         float a = u_k_folding;
@@ -3783,9 +3859,9 @@ float josKleinianV4DE(vec3 pos, out float trap) {
         if (u_k_spheresEnabled == 1) Ztemp = min(z.z, u_k_folding - z.z);
         dist = min(Ztemp + u_k_anDEoff0, u_k_tweak) / max(dr, u_k_offset1);
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return dist;
 }
 
@@ -3795,20 +3871,19 @@ float mengerIFS4(vec4 z, float dr) { return (length(z) - 2.0) / max(dr, 1e-9); }
 float cFmod(float x, float y) { return x - y * trunc(x / y); }
 
 vec3 mengerSort3(vec3 z) {
-    if (z.x < z.y) { float t = z.y; z.y = z.x; z.x = t; }
-    if (z.x < z.z) { float t = z.z; z.z = z.x; z.x = t; }
-    if (z.y < z.z) { float t = z.z; z.z = z.y; z.y = t; }
-    return z;
+    vec2 ab = vec2(max(z.x, z.y), min(z.x, z.y));
+    float hi = max(ab.x, z.z);
+    float mid = min(ab.x, z.z);
+    return vec3(hi, max(ab.y, mid), min(ab.y, mid));
 }
 
 vec4 mengerSort4(vec4 z) {
-    if (z.x < z.y) { float t = z.y; z.y = z.x; z.x = t; }
-    if (z.x < z.z) { float t = z.z; z.z = z.x; z.x = t; }
-    if (z.y < z.z) { float t = z.z; z.z = z.y; z.y = t; }
-    if (z.x < z.w) { float t = z.w; z.w = z.x; z.x = t; }
-    if (z.y < z.w) { float t = z.w; z.w = z.y; z.y = t; }
-    if (z.z < z.w) { float t = z.w; z.w = z.z; z.z = t; }
-    return z;
+    vec2 a01 = vec2(max(z.x, z.y), min(z.x, z.y));
+    vec2 a23 = vec2(max(z.z, z.w), min(z.z, z.w));
+    vec2 b02 = vec2(max(a01.x, a23.x), min(a01.x, a23.x));
+    vec2 b13 = vec2(max(a01.y, a23.y), min(a01.y, a23.y));
+    vec2 c12 = vec2(max(b02.y, b13.x), min(b02.y, b13.x));
+    return vec4(b02.x, c12.x, c12.y, b13.y);
 }
 
 vec3 mengerStdFold(vec3 z, inout float dr) {
@@ -3858,22 +3933,22 @@ void mengerCheb(inout vec3 z, inout float dr) {
 }
 
 float menger3DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
         z = mengerStdFold(z, dr);
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float menger3M3dDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
         z = mengerSort3(z);
@@ -3886,17 +3961,17 @@ float menger3M3dDE(vec3 pos, out float trap) {
         z.z = u_m_scale3 * z.z;
         dr *= u_m_scale3;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float menger4dDE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trapv = 1e10;
+    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
         z = mengerSort4(z);
@@ -3911,17 +3986,17 @@ float menger4dDE(vec3 pos, out float trap) {
         z.z *= s;
         dr *= s * u_m_anDEscale;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS4(z, dr);
 }
 
 float menger4dMod1DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trapv = 1e10;
+    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
         z = mengerSort4(z);
@@ -3936,17 +4011,17 @@ float menger4dMod1DE(vec3 pos, out float trap) {
         z.z *= s;
         dr *= s * u_m_anDEscale;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS4(z, dr);
 }
 
 float menger4dMod2DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trapv = 1e10;
+    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
         z = mengerSort4(z);
@@ -3963,36 +4038,44 @@ float menger4dMod2DE(vec3 pos, out float trap) {
         dr *= u_m_scale3;
         dr = dr * u_m_anDEscale + u_m_anDEoff0;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS4(z, dr);
 }
 
 float mengerChebyshevDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
-
-        if (i == 0) mengerCheb(z, dr);
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trap2 = min(trap2, dot(z, z));
+        mengerCheb(z, dr);
         z = abs(z);
         z = mengerSort3(z);
         z = z * u_m_scale3 - u_m_offset222;
         dr = dr * u_m_scale3 + u_m_anDEoff0;
         if (z.z < -1.0) z.z += 2.0;
-
-        if (length(z) > u_bailout) break;
+        escaped = dot(z, z) > u_bailout2;
     }
-    trap = trapv;
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        trap2 = min(trap2, dot(z, z));
+        z = abs(z);
+        z = mengerSort3(z);
+        z = z * u_m_scale3 - u_m_offset222;
+        dr = dr * u_m_scale3 + u_m_anDEoff0;
+        if (z.z < -1.0) z.z += 2.0;
+        if (dot(z, z) > u_bailout2) break;
+    }
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerCrossKifsDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z.y = abs(z.y);
         z.z = abs(z.z);
@@ -4014,19 +4097,18 @@ float mengerCrossKifsDE(vec3 pos, out float trap) {
         z -= vec3(SQRT_3_4, 1.5, 1.5) * (u_m_scale3 - 1.0);
         dr *= u_m_scale3;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerCrossMod1DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
-
-        if (i == 0) {
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trap2 = min(trap2, dot(z, z));
+        {
             z.y = abs(z.y);
             z.z = abs(z.z);
             float dot1 = (z.x * -SQRT_3_4 + z.y * 0.5);
@@ -4038,7 +4120,7 @@ float mengerCrossMod1DE(vec3 pos, out float trap) {
             if (z.z > z.x) { float q = z.z; z.z = z.x; z.x = q; }
             dr *= u_m_anDEscale;
         }
-
+        
         z.y = abs(z.y);
         z.z = abs(z.z);
         float dot1 = z.x * -SQRT_3_4 + z.y * 0.5;
@@ -4058,18 +4140,41 @@ float mengerCrossMod1DE(vec3 pos, out float trap) {
         z.y += dy;
         z.z += dz;
         z.x += SQRT_3_4;
-
-        if (length(z) > u_bailout) break;
+        escaped = dot(z, z) > u_bailout2;
     }
-    trap = trapv;
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        trap2 = min(trap2, dot(z, z));
+        z.y = abs(z.y);
+        z.z = abs(z.z);
+        float dot1 = z.x * -SQRT_3_4 + z.y * 0.5;
+        float t2 = max(0.0, dot1);
+        z.x -= t2 * -SQRT_3;
+        z.y = abs(z.y - t2);
+        z.x -= SQRT_3_4;
+        float dy = 0.0;
+        float dz = 0.0;
+        if (z.y > 0.5 && z.z > 0.5) { dy = 1.5; dz = 1.5; }
+        else if (z.z < z.y) { dy = 1.5; }
+        else { dz = 1.5; }
+        z.y -= dy;
+        z.z -= dz;
+        z *= u_m_scale3;
+        dr *= u_m_scale3;
+        z.y += dy;
+        z.z += dz;
+        z.x += SQRT_3_4;
+        if (dot(z, z) > u_bailout2) break;
+    }
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerMiddleModDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
         z = mengerSort3(z);
@@ -4079,29 +4184,29 @@ float mengerMiddleModDE(vec3 pos, out float trap) {
         z.y -= 2.0 * u_m_cmult111.y;
         if (z.z > 1.0) z.z -= 2.0 * u_m_cmult111.z;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerMod1DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
         z = mengerSpongeFold(z, dr, u_m_cmult111);
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerOctoDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         if (z.x + z.y < 0.0) z = vec3(-z.y, -z.x, z.z);
         if (z.x + z.z < 0.0) z = vec3(-z.z, z.y, -z.x);
@@ -4112,42 +4217,43 @@ float mengerOctoDE(vec3 pos, out float trap) {
         dr *= 2.0;
 
         z = mengerSpongeFold(z, dr, u_m_cmult111);
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerPolyFoldDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
-
-        if (i == 0) {
-            z.x = abs(z.x);
-            float psi = 3.14159265359 / float(max(u_m_int8X, 1));
-            psi = abs(cFmod(atan(z.y / z.x) + psi, 2.0 * psi) - psi);
-            float len = sqrt(z.x * z.x + z.y * z.y);
-            z.x = cos(psi) * len;
-            z.y = sin(psi) * len;
-        }
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trap2 = min(trap2, dot(z, z));
+        z.x = abs(z.x);
+        float psi = 3.14159265359 / float(max(u_m_int8X, 1));
+        psi = abs(cFmod(atan(z.y / z.x) + psi, 2.0 * psi) - psi);
+        float len = sqrt(z.x * z.x + z.y * z.y);
+        z.x = cos(psi) * len;
+        z.y = sin(psi) * len;
         z = mengerSpongeFold(z, dr, u_m_cmultA111);
         dr = dr * u_m_anDEscale + u_m_anDEoff0;
-
-        if (length(z) > u_bailout) break;
+        escaped = dot(z, z) > u_bailout2;
     }
-    trap = trapv;
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        trap2 = min(trap2, dot(z, z));
+        z = mengerSpongeFold(z, dr, u_m_cmultA111);
+        dr = dr * u_m_anDEscale + u_m_anDEoff0;
+        if (dot(z, z) > u_bailout2) break;
+    }
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerPrismShapeDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
-
-        if (i == 0) {
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trap2 = min(trap2, dot(z, z));
             z.y = abs(z.y);
             z.z = abs(z.z);
             float dot1 = (z.x * -SQRT_3_4 + z.y * 0.5);
@@ -4160,22 +4266,24 @@ float mengerPrismShapeDE(vec3 pos, out float trap) {
                 z.y = max(0.0, z.y);
                 z.z = max(0.0, z.z);
             }
-        }
         z = mengerSpongeFold(z, dr, u_m_cmultA111);
-
-        if (length(z) > u_bailout) break;
+        escaped = dot(z, z) > u_bailout2;
     }
-    trap = trapv;
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        trap2 = min(trap2, dot(z, z));
+        z = mengerSpongeFold(z, dr, u_m_cmultA111);
+        if (dot(z, z) > u_bailout2) break;
+    }
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerPrismShape2DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
-
-        if (i == 0) {
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trap2 = min(trap2, dot(z, z));
             z.y = abs(z.y);
             z.z = abs(z.z);
             float tempOff = 0.43301270189221932;
@@ -4185,69 +4293,83 @@ float mengerPrismShape2DE(vec3 pos, out float trap) {
             z.y = abs(z.y - t);
             if (z.y > z.z) { float q = z.y; z.y = z.z; z.z = q; }
             if (z.z > z.x) { float q = z.z; z.z = z.x; z.x = q; }
-        }
         z = mengerSpongeFold(z, dr, u_m_cmultA111);
-
-        if (length(z) > u_bailout) break;
+        escaped = dot(z, z) > u_bailout2;
     }
-    trap = trapv;
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        trap2 = min(trap2, dot(z, z));
+        z = mengerSpongeFold(z, dr, u_m_cmultA111);
+        if (dot(z, z) > u_bailout2) break;
+    }
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerPwr2PolyDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
-
-        if (i == 0) {
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trap2 = min(trap2, dot(z, z));
             vec3 partA = z * 2.0 + u_m_cmult111;
             vec3 partB = z * 4.0;
             z = vec3(1.0) + partB - partA * z;
             z *= 0.25;
             dr = dr * 4.0 * u_m_anDEscale + u_m_anDEoff1;
-        }
         for (int k = 0; k < 32; k++) {
             if (k >= u_m_int1) break;
             z = mengerSpongeFold(z, dr, u_m_cmultA111);
         }
-
-        if (length(z) > u_bailout) break;
+        escaped = dot(z, z) > u_bailout2;
     }
-    trap = trapv;
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        trap2 = min(trap2, dot(z, z));
+        for (int k = 0; k < 32; k++) {
+            if (k >= u_m_int1) break;
+            z = mengerSpongeFold(z, dr, u_m_cmultA111);
+        }
+        if (dot(z, z) > u_bailout2) break;
+    }
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerPyramidDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
-
-        if (i == 0) {
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trap2 = min(trap2, dot(z, z));
             z.x = abs(z.x);
             z.y = abs(z.y);
             z.x += 0.5;
             z.y += 0.5;
             z.x += z.z * 0.5;
             z.y += z.z * 0.5;
-        }
         for (int k = 0; k < 32; k++) {
             if (k >= u_m_int1) break;
             z = mengerStdFold(z, dr);
         }
-
-        if (length(z) > u_bailout) break;
+        escaped = dot(z, z) > u_bailout2;
     }
-    trap = trapv;
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        trap2 = min(trap2, dot(z, z));
+        for (int k = 0; k < 32; k++) {
+            if (k >= u_m_int1) break;
+            z = mengerStdFold(z, dr);
+        }
+        if (dot(z, z) > u_bailout2) break;
+    }
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerSmoothDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         float offS = 0.005;
         z = vec3(sqrt(z.x * z.x + offS), sqrt(z.y * z.y + offS), sqrt(z.z * z.z + offS));
@@ -4274,19 +4396,18 @@ float mengerSmoothDE(vec3 pos, out float trap) {
         z.z = u_m_scale3 * z.z;
         dr *= u_m_scale3;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerSmoothChebyshevDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
-
-        if (i == 0) mengerCheb(z, dr);
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    bool escaped = false;
+    if (u_max_iter > 0) {
+        trap2 = min(trap2, dot(z, z));
+        mengerCheb(z, dr);
         z = abs(z);
         float offS = 0.005;
         float t = z.x - z.y;
@@ -4309,18 +4430,44 @@ float mengerSmoothChebyshevDE(vec3 pos, out float trap) {
         z.y = u_m_scale3 * z.y - u_m_cmult221.y;
         z.z = u_m_scale3 * z.z;
         dr *= u_m_scale3;
-
-        if (length(z) > u_bailout) break;
+        escaped = dot(z, z) > u_bailout2;
     }
-    trap = trapv;
+    for (int i = 1; i < 32 && !escaped; i++) {
+        if (i >= u_max_iter) break;
+        trap2 = min(trap2, dot(z, z));
+        z = abs(z);
+        float offS = 0.005;
+        float t = z.x - z.y;
+        t = 0.5 * (t - sqrt(t * t + offS * u_m_cmult111.x));
+        z.x -= t;
+        z.y += t;
+        t = z.x - z.z;
+        t = 0.5 * (t - sqrt(t * t + offS * u_m_cmult111.y));
+        z.x -= t;
+        z.z += t;
+        t = z.y - z.z;
+        t = 0.5 * (t - sqrt(t * t + offS * u_m_cmult111.z));
+        z.y -= t;
+        z.z += t;
+        t = u_m_cmult221.z / 3.0;
+        z.z -= t;
+        z.z = -sqrt(z.z * z.z + offS);
+        z.z += t;
+        z.x = u_m_scale3 * z.x - u_m_cmult221.x;
+        z.y = u_m_scale3 * z.y - u_m_cmult221.y;
+        z.z = u_m_scale3 * z.z;
+        dr *= u_m_scale3;
+        if (dot(z, z) > u_bailout2) break;
+    }
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerSmoothMod1DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
         float offS = 0.005;
@@ -4345,17 +4492,17 @@ float mengerSmoothMod1DE(vec3 pos, out float trap) {
         z.z = u_m_scale3 * z.z;
         dr *= u_m_scale3;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerSpongeDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
         z = abs(z);
         z = mengerSort3(z);
         z *= u_m_scale3;
@@ -4363,77 +4510,69 @@ float mengerSpongeDE(vec3 pos, out float trap) {
         z.y -= 2.0;
         if (z.z > 1.0) z.z -= 2.0;
         dr *= u_m_scale3;
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerV2DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float dist = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+    /* Only the first outer iteration performs work; run it once. */
+    vec3 z = pos; float dr = 1.0; float dist = 1000.0;
+    float trap2 = dot(z, z);
 
-        z = vec3(abs(z.x), abs(z.y), z.z);
-        if (i == 0) {
-            vec3 zc = z * 0.5 + 0.5;
-            vec3 pp = abs(zc - 0.5) - 0.5;
-            float DE0 = max(pp.x, max(pp.y, pp.z));
-            float rr = 0.0;
-            for (int k = 0; k < 32; k++) {
-                if (k >= u_m_int8X || rr >= 10.0) break;
-                vec3 pa = vec3(cFmod(3.0 * zc.x * dr, 3.0),
-                               cFmod(3.0 * zc.y * dr, 3.0),
-                               cFmod(3.0 * zc.z * dr, 3.0));
-                pp = vec3(0.5) - abs(pa - 1.5);
-                rr = dot(pp, pp);
-                float d = min(max(pp.x, pp.z), min(max(pp.x, pp.y), max(pp.y, pp.z))) / max(dr, 1e-9);
-                DE0 = max(d, DE0);
-                dr *= u_m_scale3;
-            }
-            dist = DE0 * u_m_anDEscale;
-        }
-        if (length(z) > u_bailout) break;
+    z = vec3(abs(z.x), abs(z.y), z.z);
+    vec3 zc = z * 0.5 + 0.5;
+    vec3 pp = abs(zc - 0.5) - 0.5;
+    float DE0 = max(pp.x, max(pp.y, pp.z));
+    float rr = 0.0;
+    for (int k = 0; k < 32; k++) {
+        if (k >= u_m_int8X || rr >= 10.0) break;
+        vec3 pa = vec3(cFmod(3.0 * zc.x * dr, 3.0),
+                       cFmod(3.0 * zc.y * dr, 3.0),
+                       cFmod(3.0 * zc.z * dr, 3.0));
+        pp = vec3(0.5) - abs(pa - 1.5);
+        rr = dot(pp, pp);
+        float d = min(max(pp.x, pp.z), min(max(pp.x, pp.y), max(pp.y, pp.z))) / max(dr, 1e-9);
+        DE0 = max(d, DE0);
+        dr *= u_m_scale3;
     }
-    trap = trapv;
+    dist = DE0 * u_m_anDEscale;
+
+    trap = max(sqrt(trap2), 1e-6);
     return dist;
 }
 
 float mengerV3DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float dist = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+    /* Only the first outer iteration performs work; run it once. */
+    vec3 z = pos; float dr = 1.0; float dist = 1000.0;
+    float trap2 = dot(z, z);
 
-        z = abs(z);
-        if (i == 0) {
-            vec3 zc = z + vec3(1.0);
-            float DE0 = 0.0;
-            float rr = 0.0;
-            for (int k = 0; k < 32; k++) {
-                if (k >= u_m_int8X || rr >= 10.0) break;
-                vec3 pp = vec3(cFmod(zc.x * dr, 3.0) - 1.5,
-                               cFmod(zc.y * dr, 3.0) - 1.5,
-                               cFmod(zc.z * dr, 3.0) - 1.5);
-                rr = dot(pp, pp);
-                DE0 = max(DE0, (u_m_offset1 - length(pp)) / max(dr, 1e-9));
-                dr *= u_m_scale3;
-            }
-            float e = clamp(length(z) - u_m_offset2, 0.0, 100.0);
-            dist = max(DE0, e) * u_m_anDEscale;
-        }
-        if (length(z) > u_bailout) break;
+    z = abs(z);
+    vec3 zc = z + vec3(1.0);
+    float DE0 = 0.0;
+    float rr = 0.0;
+    for (int k = 0; k < 32; k++) {
+        if (k >= u_m_int8X || rr >= 10.0) break;
+        vec3 pp = vec3(cFmod(zc.x * dr, 3.0) - 1.5,
+                       cFmod(zc.y * dr, 3.0) - 1.5,
+                       cFmod(zc.z * dr, 3.0) - 1.5);
+        rr = dot(pp, pp);
+        DE0 = max(DE0, (u_m_offset1 - length(pp)) / max(dr, 1e-9));
+        dr *= u_m_scale3;
     }
-    trap = trapv;
+    float e = clamp(sqrt(trap2) - u_m_offset2, 0.0, 100.0);
+    dist = max(DE0, e) * u_m_anDEscale;
+
+    trap = max(sqrt(trap2), 1e-6);
     return dist;
 }
 
 float mengerV4DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
         float t = z.x - z.y;
@@ -4456,17 +4595,17 @@ float mengerV4DE(vec3 pos, out float trap) {
         z.y = s * z.y - u_m_offset1105.y * sc1;
         z.z = s * z.z;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
 float mengerV5DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
         float t = z.x - z.z;
@@ -4489,9 +4628,9 @@ float mengerV5DE(vec3 pos, out float trap) {
         z.z = s * z.z - u_m_offset1105.y * sc1;
         z.y = s * z.y;
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return mengerIFS(z, dr);
 }
 
@@ -4528,10 +4667,10 @@ float mengerV6DE(vec3 pos, out float trap) {
 }
 
 float mengerV7DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = 1e10; float dist = 1000.0;
+    vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
     for (int i = 0; i < 32; i++) {
         if (i >= u_max_iter) break;
-        trapv = min(trapv, max(length(z), 1e-6));
+        trap2 = min(trap2, dot(z, z));
 
         z *= 1.5;
         dr *= 1.5;
@@ -4557,9 +4696,9 @@ float mengerV7DE(vec3 pos, out float trap) {
         d = d / max(dr, 1e-9);
         dist = min(dist, d);
 
-        if (length(z) > u_bailout) break;
+        if (dot(z, z) > u_bailout2) break;
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     return dist;
 }
 
@@ -4638,103 +4777,51 @@ vec3 calcNormal(vec3 p, float eps) {
 
 /* Shadow ray march: return 1.0 if unoccluded, 0.0 if the light is blocked.
    Soft-shadow penumbra, capped at 2.0 world units for performance. */
+#ifdef ENABLE_SHADOWS
 float shadowMarch(vec3 startP, vec3 lightDir, float eps) {
     float t = max(0.02, eps * 4.0);
     float tMax = 2.0;
+    float b = dot(startP, lightDir);
+    float c = dot(startP, startP) - u_boundR * u_boundR;
+    float disc = b * b - c;
+    if (disc > 0.0) {
+        float exitT = -b + sqrt(disc);
+        if (exitT > 0.0) tMax = min(tMax, exitT);
+    }
     float res = 1.0;
     float dummy;
     for (int i = 0; i < 24; i++) {
         vec3 q = startP + lightDir * t;
         float d = sceneDE(q, dummy);
         if (d < eps) return 0.0;
-        res = min(res, 8.0 * d / max(t, 1e-4));
+        res = min(res, 8.0 * d / t);
+        if (res < 0.01) return 0.0;
         t += max(0.01, d);
         if (t > tMax) break;
     }
     return clamp(res, 0.0, 1.0);
 }
+#endif
 
 vec3 cosinePalette(float t) {
-    vec3 a, b, c, d;
-    if (u_palette == 1) {          /* Ember */
-        a = vec3(0.62, 0.16, 0.05); b = vec3(0.38, 0.30, 0.14);
-        c = vec3(1.00); d = vec3(0.00, 0.07, 0.17);
-    } else if (u_palette == 2) {   /* Lagoon */
-        a = vec3(0.20, 0.52, 0.58); b = vec3(0.28, 0.36, 0.36);
-        c = vec3(1.00); d = vec3(0.10, 0.30, 0.55);
-    } else if (u_palette == 3) {   /* Neon Bloom */
-        a = vec3(0.55, 0.32, 0.58); b = vec3(0.45, 0.42, 0.42);
-        c = vec3(1.00); d = vec3(0.00, 0.33, 0.67);
-    } else if (u_palette == 4) {   /* Golden Hour */
-        a = vec3(0.62, 0.36, 0.10); b = vec3(0.38, 0.34, 0.16);
-        c = vec3(1.00, 0.90, 0.80); d = vec3(0.00, 0.10, 0.22);
-    } else if (u_palette == 5) {   /* Candy Floss */
-        a = vec3(0.68, 0.36, 0.52); b = vec3(0.30, 0.34, 0.30);
-        c = vec3(1.00); d = vec3(0.00, 0.20, 0.44);
-    } else if (u_palette == 6) {   /* Toxic Slime */
-        a = vec3(0.28, 0.55, 0.22); b = vec3(0.32, 0.38, 0.24);
-        c = vec3(1.00); d = vec3(0.06, 0.26, 0.46);
-    } else if (u_palette == 7) {   /* Deep Space */
-        a = vec3(0.18, 0.22, 0.42); b = vec3(0.34, 0.34, 0.42);
-        c = vec3(1.00); d = vec3(0.40, 0.55, 0.72);
-    } else if (u_palette == 8) {   /* Copper Patina */
-        a = vec3(0.40, 0.52, 0.46); b = vec3(0.36, 0.30, 0.30);
-        c = vec3(1.00); d = vec3(0.02, 0.22, 0.40);
-    } else if (u_palette == 9) {   /* Monolith */
-        a = vec3(0.55); b = vec3(0.40);
-        c = vec3(1.00); d = vec3(0.05);
-    } else if (u_palette == 10) {  /* Retro Sunset */
-        a = vec3(0.74, 0.24, 0.30); b = vec3(0.26, 0.30, 0.26);
-        c = vec3(1.00); d = vec3(0.00, 0.08, 0.20);
-    } else if (u_palette == 11) {  /* Vaporwave */
-        a = vec3(0.44, 0.46, 0.62); b = vec3(0.40, 0.44, 0.38);
-        c = vec3(1.60); d = vec3(0.10, 0.34, 0.64);
-    } else if (u_palette == 12) {  /* Arcade */
-        a = vec3(0.30, 0.52, 0.34); b = vec3(0.42, 0.46, 0.44);
-        c = vec3(2.20); d = vec3(0.02, 0.18, 0.42);
-    } else if (u_palette == 13) {  /* New Age */
-        a = vec3(0.60, 0.52, 0.56); b = vec3(0.28, 0.30, 0.28);
-        c = vec3(0.80); d = vec3(0.05, 0.30, 0.55);
-    } else if (u_palette == 14) {  /* Crystal Aura */
-        a = vec3(0.64, 0.60, 0.72); b = vec3(0.34, 0.34, 0.28);
-        c = vec3(1.00, 1.50, 2.00); d = vec3(0.10, 0.28, 0.52);
-    } else if (u_palette == 15) {  /* Chakra */
-        a = vec3(0.52, 0.46, 0.46); b = vec3(0.46, 0.46, 0.46);
-        c = vec3(1.00); d = vec3(0.00, 0.33, 0.67);
-    } else if (u_palette == 16) {  /* Punk */
-        a = vec3(0.28, 0.16, 0.18); b = vec3(0.50, 0.22, 0.24);
-        c = vec3(1.20); d = vec3(0.00, 0.12, 0.42);
-    } else if (u_palette == 17) {  /* Acid Punk */
-        a = vec3(0.32, 0.52, 0.22); b = vec3(0.48, 0.42, 0.36);
-        c = vec3(2.60); d = vec3(0.04, 0.24, 0.54);
-    } else if (u_palette == 18) {  /* Cartoon */
-        a = vec3(0.58, 0.52, 0.42); b = vec3(0.44, 0.48, 0.48);
-        c = vec3(1.00); d = vec3(0.00, 0.33, 0.66);
-    } else if (u_palette == 19) {  /* Comic Pop */
-        a = vec3(0.60, 0.42, 0.52); b = vec3(0.40, 0.46, 0.40);
-        c = vec3(2.00); d = vec3(0.10, 0.40, 0.70);
-    } else {                       /* 0 — Aurora */
-        a = vec3(0.50); b = vec3(0.50);
-        c = vec3(1.00); d = vec3(0.00, 0.15, 0.35);
-    }
-    return clamp(a + b * cos(6.2831853 * (c * t + d)), 0.0, 1.0);
+    return clamp(u_palA + u_palB * cos(6.2831853 * (u_palC * t + u_palD)), 0.0, 1.0);
 }
 
 void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
     vec3 rdW = normalize(u_forward * 1.6 + uv.x * u_right + uv.y * u_up);
-    float bgT = clamp(0.5 * (rdW.z + 1.0), 0.0, 1.0);
-    vec3 col = mix(vec3(0.03, 0.04, 0.08), vec3(0.12, 0.16, 0.28), bgT);
 
     /* Ray and scene are transformed into object space for auto-rotation.
-       The background above stays in world space. */
+       Origin, light direction, and the sphere constant are precomputed on
+       the CPU because they are identical for every pixel. */
     vec3 rd = u_rotMat * rdW;
-    vec3 ro = u_rotMat * u_ro;
+    vec3 ro = u_roObj;
 
-    float boundR = u_boundR;
+    bool hitAny = false;
+    vec3 col;
+
     float b = dot(ro, rd);
-    float cc = dot(ro, ro) - boundR * boundR;
-    float disc = b * b - cc;
+    float disc = b * b - u_cc;
 
     if (disc >= 0.0) {
         float sqrtDisc = sqrt(disc);
@@ -4742,24 +4829,24 @@ void main() {
         float tMax = -b + sqrtDisc;
 
         float stepScale = u_stepScale;
-        float pixEps = 0.75 / (1.6 * u_resolution.y);
+        float pixEps = u_pixEps;
         float eps = u_eps;
 
         if (tMax > t) {
             bool hit = false; float trap = 0.0; int hitSteps = 0;
+            vec3 p;
             for (int i = 0; i < 2048; i++) {
                 if (i >= u_max_steps) break;
-                vec3 p = ro + rd * t;
+                p = ro + rd * t;
                 eps = max(u_eps, t * pixEps);
                 float d = sceneDE(p, trap);
                 if (d < eps) { hit = true; hitSteps = i; break; }
-                if (d > 0.0) t += d * stepScale; else break;
+                t += d * stepScale;
                 if (t > tMax) break;
             }
             if (hit) {
-                vec3 p = ro + rd * t;
                 vec3 n = calcNormal(p, eps);
-                vec3 lightDir = normalize(u_rotMat * vec3(1.5, -1.0, 2.0));
+                vec3 lightDir = u_lightDir;
                 vec3 viewDir = -rd;
                 vec3 halfVec = normalize(lightDir + viewDir);
 
@@ -4768,15 +4855,19 @@ void main() {
                 float spec = 0.0;
                 if (ndl > 0.0) {
                     float shadowK = 1.0;
-                    if (u_shadowsEnabled == 1) {
-                        /* Offset slightly along the normal from the surface, then march
-                           toward the light to check occlusion. */
-                        shadowK = shadowMarch(p + n * eps * 4.0, lightDir, eps * 3.0);
-                    }
+#ifdef ENABLE_SHADOWS
+                    /* Offset slightly along the normal from the surface, then march
+                       toward the light to check occlusion. */
+                    shadowK = shadowMarch(p + n * eps * 4.0, lightDir, eps * 3.0);
+#endif
                     diff = ndl * shadowK;
-                    spec = pow(max(dot(n, halfVec), 0.0), 32.0) * shadowK;
+                    float sp = max(dot(n, halfVec), 0.0);
+                    sp *= sp; sp *= sp; sp *= sp; sp *= sp; sp *= sp;
+                    spec = sp * shadowK;
                 }
-                float ao = clamp(1.0 - pow(float(hitSteps) / 128.0, 0.75), 0.1, 1.0);
+                float aoT = float(hitSteps) / 128.0;
+                float aoS = sqrt(aoT);
+                float ao = clamp(1.0 - aoS * sqrt(aoS), 0.1, 1.0);
 
                 float tCol = clamp((trap - u_trapOffset) * u_trapScale, 0.0, 1.0);
 
@@ -4786,15 +4877,22 @@ void main() {
                 /* Wireframe-style surface grid. This is not a polygon mesh
                    wireframe, but a triplanar lattice evaluated on the hit
                    surface in object space. */
-                if (u_wireframeEnabled == 1) {
+#ifdef ENABLE_WIREFRAME
+                {
                     vec3 gp = abs(fract(p * 6.0) - 0.5);
                     float gl = min(gp.x, min(gp.y, gp.z));
                     float aa = max(fwidth(gl), 1e-5);
                     float wire = 1.0 - smoothstep(0.0, aa * 1.5, gl);
                     col = mix(col * 0.18, vec3(0.35, 0.95, 1.0), wire);
                 }
+#endif
+                hitAny = true;
             }
         }
+    }
+    if (!hitAny) {
+        float bgT = clamp(0.5 * (rdW.z + 1.0), 0.0, 1.0);
+        col = mix(vec3(0.03, 0.04, 0.08), vec3(0.12, 0.16, 0.28), bgT);
     }
     col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
     fragColor = vec4(col, 1.0);
@@ -4804,12 +4902,14 @@ void main() {
      PROGRAM
      ------------------------------------------------------------------ */
 
-  function compileShader(type, src) {
+  function compileShader(type, src, allowAsync = false) {
     const sh = gl.createShader(type);
     gl.shaderSource(sh, src); gl.compileShader(sh);
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-      const log = gl.getShaderInfoLog(sh); gl.deleteShader(sh);
-      throw new Error('Shader compile error:\n' + log);
+    if (!allowAsync || !parallelCompile) {
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        const log = gl.getShaderInfoLog(sh); gl.deleteShader(sh);
+        throw new Error('Shader compile error:\n' + log);
+      }
     }
     return sh;
   }
@@ -4855,7 +4955,7 @@ void main() {
     'menger3DE',              // 32
     'menger3M3dDE',           // 33
     'menger4dDE',             // 34
-    'menger4dMod1DE',         // 35
+    'menger4dDE',             // 35 (identical to 34)
     'menger4dMod2DE',         // 36
     'mengerChebyshevDE',      // 37
     'mengerCrossKifsDE',      // 38
@@ -4932,7 +5032,7 @@ void main() {
     'mandelbulbSinCosV3DE',   // 109
     'mandelbulbSinCosV4DE',   // 110
     'mandelbulbTailsDE',      // 111
-    'mandelbulbTailsV2DE',    // 112
+    'mandelbulbTailsDE',      // 112 (identical to 111)
     'mandelbulbVaryPowerDE'   // 113
   ];
 
@@ -4963,13 +5063,6 @@ void main() {
     return src.length;
   }
 
-  function extractFunction(src, name) {
-    const re = new RegExp('^float\\s+' + name + '\\s*\\(', 'm');
-    const m = re.exec(src);
-    if (!m) return '';
-    return src.slice(m.index, findFunctionEnd(src, m.index));
-  }
-
   function stripDEs(src) {
     const spans = [];
     const re = /^float\s+(\w+DE)\s*\(/gm;
@@ -4988,173 +5081,181 @@ void main() {
     return out + src.slice(last);
   }
 
+  /* Shader prefix, suffix, and the DE function lookup are identical for all
+     114 variants. Build them once at startup instead of rescanning the full
+     shader source for every uncached fractal. */
+  const SCENE_DE_MARKER = 'float sceneDE(vec3 p, out float trap) {';
+  const SCENE_DE_START = FRAG_SHADER.indexOf(SCENE_DE_MARKER);
+  if (SCENE_DE_START < 0) throw new Error('sceneDE dispatcher not found');
+  const FRAG_PREFIX = stripDEs(FRAG_SHADER.slice(0, SCENE_DE_START));
+  const FRAG_SUFFIX = FRAG_SHADER.slice(findFunctionEnd(FRAG_SHADER, SCENE_DE_START));
+
+  const DE_FN_BY_NAME = Object.create(null);
+  {
+    const re = /^float\s+(\w+DE)\s*\(/gm;
+    let m;
+    while ((m = re.exec(FRAG_SHADER))) {
+      const end = findFunctionEnd(FRAG_SHADER, m.index);
+      if (m[1] !== 'sceneDE') DE_FN_BY_NAME[m[1]] = FRAG_SHADER.slice(m.index, end);
+      re.lastIndex = end;
+    }
+  }
+
   function buildFragmentSource(id) {
     const name = DE_FUNCTION_BY_FRACTAL[id];
     if (!name) throw new Error('Unknown fractal id: ' + id);
-    const fn = extractFunction(FRAG_SHADER, name);
+    const fn = DE_FN_BY_NAME[name];
     if (!fn) throw new Error('Missing DE function: ' + name);
 
-    const marker = 'float sceneDE(vec3 p, out float trap) {';
-    const ds = FRAG_SHADER.indexOf(marker);
-    if (ds < 0) throw new Error('sceneDE dispatcher not found');
-    const de = findFunctionEnd(FRAG_SHADER, ds);
-
-    const prefix = stripDEs(FRAG_SHADER.slice(0, ds));
-    const suffix = FRAG_SHADER.slice(de);
     const mbTweak = (id === 0 || id === 58 || (id >= 80 && id <= 113));
     const ret = mbTweak
       ? '    float d = ' + name + '(p, trap);\n' +
         '    return max(d * u_mb_deScale + u_mb_deOffset, 1e-6);\n'
       : '    return ' + name + '(p, trap);\n';
+    const defines = (shaderShadows ? '#define ENABLE_SHADOWS\n' : '') +
+                    (shaderWireframe ? '#define ENABLE_WIREFRAME\n' : '');
+    const prefix = defines
+      ? FRAG_PREFIX.replace('#version 300 es\n', '#version 300 es\n' + defines)
+      : FRAG_PREFIX;
     return prefix + '\n' + fn +
-      '\n\nfloat sceneDE(vec3 p, out float trap) {\n' + ret + '}\n' +
-      suffix;
+      '\n\n' + SCENE_DE_MARKER + '\n' + ret + '}\n' +
+      FRAG_SUFFIX;
   }
 
-  const names = [
-      'u_resolution','u_ro','u_forward','u_right','u_up','u_rotMat',
-      'u_power','u_wo_scale','u_wi_scale','u_zz_scale','u_eps',
-      'u_boundR','u_stepScale','u_trapOffset','u_trapScale',
-      'u_max_iter','u_max_steps','u_bailout','u_shadowsEnabled','u_wireframeEnabled','u_palette','u_colorShift','u_offset',
-      'u_mb_alpha','u_mb_beta','u_mb_absA','u_mb_absB','u_mb_gamma','u_mb_varPower',
-      'u_mb_p2Scale','u_mb_off000','u_mb_p3ScaleA','u_mb_p3ScaleZ',
-      'u_mb_p4Scale2','u_mb_p4ScaleA','u_mb_p4ScaleZ','u_mb_qdMul','u_mb_qdAdd','u_mb_qdZR',
-      'u_mb_qtMul','u_mb_qtAdd','u_mb_deScale','u_mb_deOffset',
-      'u_mb_sA','u_mb_sB','u_mb_zScale','u_mb_tailScale','u_mb_plusPower',
-      'u_mb_kosTweak','u_mb_kosOffZ','u_mb_lc',
-      'u_b3_scale','u_b3_offset','u_q1_scale','u_q1_offset','u_q1_deScale','u_q1_deOffset',
-      'u_hc1_mult','u_hc1_offset','u_hc1_deScale','u_hc1_deOffset',
-      'u_iq8_scaleA','u_iq8_scaleX','u_iq8_scaleZ','u_m2_scale','u_m2_offset',
-      'u_ms_symAdd','u_ms_symScale',
-      'u_mb_phiScale','u_mb_eyeB','u_mb_eyeC',
-      'u_mb_bmPower','u_mb_bmScaleA','u_mb_bmScaleB',
-      'u_mb_preX','u_mb_preY','u_mb_preZ',
-      'u_mb_postX','u_mb_postY','u_mb_postZ','u_mb_posZ',
-      'u_q3_mult','u_q3_offset','u_q3_scaleA',
-      'u_q4_mult','u_q4_offset','u_hc2_mult','u_hc2_offset',
-      'u_hc2_deScale','u_hc2_deOffset',
-      'u_xeno_alpha','u_xeno_beta','u_xeno_sA','u_xeno_sB',
-      'u_xeno_expOff','u_xeno_scaleC','u_xeno_offset',
-      'u_riem_scale','u_riem_offA','u_riem_offB','u_riem_angleDeg',
-      'u_riem_cntDXY','u_riem_cntTXY','u_riem_cntDYZ','u_riem_cntTYZ',
-      'u_riem_enX','u_riem_enX2','u_riem_enY','u_riem_enY2',
-      'u_riem_adC','u_riem_rotMat','u_riem_rotEnabled',
-      'u_riem_analyticDE','u_riem_deOffset','u_riem_deScale',
-      'u_riem8_scale','u_riem8_offA','u_riem8_offB','u_riem8_angleDeg',
-      'u_riem8_adC','u_riem8_rotMat','u_riem8_rotEnabled',
-      'u_riem8_analyticDE','u_riem8_mandelbrotMode',
-      'u_riem8_deOffset','u_riem8_deScale',
-      'u_ms_power','u_ms_phiPower','u_ms_minR','u_ms_scaleB',
-      'u_ms_offsetR','u_ms_scaleNeg1','u_ms_anDEscale1','u_ms_anDEoff0',
-      'u_ms_scale3D','u_ms_symOffset','u_ms_startD','u_ms_stopD','u_ms_startB','u_ms_stopB',
-      'u_ms_sphOffset','u_ms_sphScale',
-      'u_ms_preEnabled','u_ms_asinMode','u_ms_rrMode','u_ms_sqrtRr',
-      'u_ms_swap','u_ms_sphEnabled','u_ms_customDE',
-      'u_ax_initQuadray','u_ax_absFirst','u_ax_cadd',
-      'u_ax_domainOffset','u_ax_scale','u_ax_cpixel',
-      'u_ax_anDEscale','u_ax_anDEoff0',
-      'u_b_prismEnabled','u_b_t1Enabled','u_b_t1RotEnabled',
-      'u_b_benOriginalEnabled','u_b_treeEnabled','u_b_altSwapEnabled',
-      'u_b_cylEnabled','u_b_juliaModeEnabled',
-      'u_b_rot2Enabled','u_b_anDEEnabled',
-      'u_b_startP','u_b_stopP','u_b_startT1','u_b_stopT1',
-      'u_b_startF','u_b_stopF','u_b_startC','u_b_stopC',
-      'u_b_startD','u_b_stopD','u_b_startE','u_b_stopE',
-      'u_b_dotScale','u_b_mult000','u_b_scale222','u_b_off200',
-      'u_b_multA','u_b_mult100','u_b_off000',
-      'u_b_scaleA1','u_b_scale1','u_b_scaleC1',
-      'u_b_rot1A','u_b_rot1B','u_b_rot1G',
-      'u_b_rot2A','u_b_rot2B','u_b_rot2G',
-      'u_b_anDEscale','u_b_anDEoff',
-      'u_bs_adc',
-      'u_ab_scale','u_ab_scaleVary','u_ab_maxR2','u_ab_minR2p25',
-      'u_ab_scaleG1','u_ab_deScale','u_ab_deOffset',
-      'u_ab_add111','u_ab_add000','u_ab_scale3D','u_ab_cMult','u_ab_mbOffset',
-      'u_ab_zFold','u_ab_quadEnabled','u_ab_swap','u_ab_addCPixel','u_ab_addC',
-      'u_ab_rotEnabled','u_ab_analyticDE',
-      'u_ab_stopD','u_ab_startC','u_ab_stopC','u_ab_rotMat',
-      'u_as_scale','u_as_scaleVary','u_as_minR','u_as_scale1',
-      'u_as_add111','u_as_cMult','u_as_off000','u_as_offA000',
-      'u_as_addC','u_as_cyl',
-      'u_sp_scaleA2','u_sp_anDEscale','u_sp_anDEoff','u_sp_offset111',
-      'u_sp_normalFold','u_sp_reverseFold','u_sp_rotEnabled','u_sp_analyticDE',
-      'u_sp_startC','u_sp_stopC','u_sp_rotStart','u_sp_rotStop','u_sp_rotMat',
-      'u_s_scale2','u_s_scaleA2','u_s_scaleA1','u_s_maxR2','u_s_inv0','u_s_inv1',
-      'u_s_anDEscale','u_s_anDEoff',
-      'u_s_offset000','u_s_offset100','u_s_offset111','u_s_offsetA000',
-      'u_s_addC000','u_s_rot44a','u_s_rot44b',
-      'u_s_offset1111','u_s_scale1111','u_s_rot2Mat','u_s_rotMat',
-      'u_s_preEnabled','u_s_absEnabled','u_s_scaleVerts','u_s_sphEnabled',
-      'u_s_rotEnabled','u_s_analyticDE','u_s_reverseFold','u_s_normalFold',
-      'u_s_absX','u_s_absY','u_s_absZ',
-      'u_s_startT','u_s_stopT1','u_s_startC','u_s_stopC','u_s_stopC1',
-      'u_s_startD','u_s_stopD1','u_s_startP','u_s_stopP1',
-      'u_s_startS','u_s_stopS','u_s_startR','u_s_stopR',
-      'u_s_startX','u_s_stopX','u_s_startY','u_s_stopY','u_s_startZ','u_s_stopZ',
-      'u_k_folding','u_k_b','u_k_minR05','u_k_minR2p25','u_k_maxR2',
-      'u_k_scale1','u_k_scaleA1','u_k_scaleB1','u_k_scaleG1',
-      'u_k_tweak','u_k_offset1','u_k_anDEscale','u_k_anDEoff0',
-      'u_k_offset0','u_k_offsetA0','u_k_offsetA1','u_k_offsetB0','u_k_offsetC0',
-      'u_k_offsetD0','u_k_offsetR0','u_k_offset02',
-      'u_k_scale1p1','u_k_scale2','u_k_scaleA2','u_k_scaleF1','u_k_scale3',
-      'u_k_scaleNeg1','u_k_scale05','u_k_scale015','u_k_scale08','u_k_offset0005',
-      'u_k_cmult000','u_k_csize','u_k_add000','u_k_offsetA000','u_k_addA000','u_k_add111',
-      'u_k_add222','u_k_box','u_k_offF000','u_k_off1111',
-      'u_k_spheresEnabled','u_k_int32','u_k_int8X',
-      'u_m_scale3','u_m_offset1','u_m_offset0','u_m_offsetA1','u_m_offsetT1','u_m_offset2',
-      'u_m_anDEscale','u_m_anDEoff0','u_m_anDEoff1',
-      'u_m_offset111','u_m_offsetA111','u_m_offset222','u_m_offset1105',
-      'u_m_cmult111','u_m_cmultA111','u_m_cmult221','u_m_add0555',
-      'u_m_add111d5','u_m_int1','u_m_int8X'
-    ];
+
 
   let prog = null, U = {};
   let activeProgramId = -1;
+  let activeRec = null;
+  let paramsVersion = 1;
+  function markParamsDirty() { paramsVersion++; }
   let vertShader = null;
-  const PROGRAM_CACHE_LIMIT = 12;
+  const PROGRAM_CACHE_LIMIT = 64;
   const programCache = new Map();
-
-  function createProgram(fragSource) {
-    if (!vertShader) vertShader = compileShader(gl.VERTEX_SHADER, VERT_SHADER);
-    const fs = compileShader(gl.FRAGMENT_SHADER, fragSource);
-    const p = gl.createProgram();
-    gl.attachShader(p, vertShader); gl.attachShader(p, fs); gl.linkProgram(p);
-    gl.deleteShader(fs);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-      const log = gl.getProgramInfoLog(p);
-      gl.deleteProgram(p);
-      throw new Error('Program link error:\n' + log);
-    }
-    const uniforms = {};
-    names.forEach(n => uniforms[n] = gl.getUniformLocation(p, n));
-    return { prog: p, U: uniforms };
+  const PROGRAM_ALIAS = { 35: 34, 112: 111 };
+  let shaderShadows = false, shaderWireframe = false;
+  let activeProgramKey = '';
+  function programKey(id) {
+    const cacheId = PROGRAM_ALIAS[id] || id;
+    return cacheId + '_' + (shaderShadows ? 1 : 0) + (shaderWireframe ? 1 : 0);
   }
 
-  function getProgram(id) {
-    if (programCache.has(id)) {
-      const rec = programCache.get(id);
-      programCache.delete(id);
-      programCache.set(id, rec);
+  function queryUniforms(p) {
+    const uniforms = {};
+    const uniformCount = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < uniformCount; i++) {
+      const info = gl.getActiveUniform(p, i);
+      if (!info) continue;
+      const loc = gl.getUniformLocation(p, info.name);
+      if (loc) uniforms[info.name] = loc;
+    }
+    return uniforms;
+  }
+
+  function createProgram(fragSource, allowAsync = false) {
+    if (!vertShader) vertShader = compileShader(gl.VERTEX_SHADER, VERT_SHADER);
+    const async = allowAsync && !!parallelCompile;
+    const fs = compileShader(gl.FRAGMENT_SHADER, fragSource, async);
+    const p = gl.createProgram();
+    gl.attachShader(p, vertShader); gl.attachShader(p, fs); gl.linkProgram(p);
+    if (!async) {
+      gl.deleteShader(fs);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        const log = gl.getProgramInfoLog(p);
+        gl.deleteProgram(p);
+        throw new Error('Program link error:\n' + log);
+      }
+      return { prog: p, U: queryUniforms(p), uploadedVersion: 0, pending: false, failed: false };
+    }
+    return { prog: p, fs, U: null, uploadedVersion: 0, pending: true, failed: false };
+  }
+
+  function finalizeProgram(rec) {
+    if (!rec.pending) return { ok: !rec.failed, error: rec.error };
+    if (!gl.getShaderParameter(rec.fs, gl.COMPILE_STATUS)) {
+      const log = gl.getShaderInfoLog(rec.fs);
+      rec.failed = true; rec.error = 'Shader compile error:\n' + log;
+      return { ok: false, error: rec.error };
+    }
+    if (!gl.getProgramParameter(rec.prog, gl.LINK_STATUS)) {
+      const log = gl.getProgramInfoLog(rec.prog);
+      rec.failed = true; rec.error = 'Program link error:\n' + log;
+      return { ok: false, error: rec.error };
+    }
+    rec.U = queryUniforms(rec.prog);
+    gl.deleteShader(rec.fs); rec.fs = null;
+    rec.pending = false;
+    return { ok: true };
+  }
+
+  function getProgram(id, forceSync = false) {
+    const key = programKey(id);
+    if (programCache.has(key)) {
+      const rec = programCache.get(key);
+      programCache.delete(key);
+      programCache.set(key, rec);
       return rec;
     }
-    const rec = createProgram(buildFragmentSource(id));
-    programCache.set(id, rec);
-    if (programCache.size > PROGRAM_CACHE_LIMIT) {
-      const oldest = programCache.keys().next().value;
-      if (oldest !== id) {
-        const oldRec = programCache.get(oldest);
-        programCache.delete(oldest);
-        gl.deleteProgram(oldRec.prog);
+    const rec = createProgram(buildFragmentSource(id), !forceSync);
+    programCache.set(key, rec);
+    while (programCache.size > PROGRAM_CACHE_LIMIT) {
+      let oldest = null;
+      for (const k of programCache.keys()) {
+        const r = programCache.get(k);
+        if (r.pending || r === activeRec || (pendingProgram && pendingProgram.rec === r)) continue;
+        oldest = k; break;
       }
+      if (!oldest) break;
+      const oldRec = programCache.get(oldest);
+      programCache.delete(oldest);
+      gl.deleteProgram(oldRec.prog);
     }
     return rec;
   }
 
+  let pendingProgram = null;
+  let pendingPollTimer = 0;
+  function scheduleProgramPoll() {
+    if (pendingPollTimer) return;
+    pendingPollTimer = setTimeout(pollProgram, 20);
+  }
+  function pollProgram() {
+    pendingPollTimer = 0;
+    if (!pendingProgram) return;
+    const { id, key, rec } = pendingProgram;
+    if (rec.pending && !gl.getProgramParameter(rec.prog, parallelCompile.COMPLETION_STATUS_KHR)) {
+      scheduleProgramPoll();
+      return;
+    }
+    const res = finalizeProgram(rec);
+    if (!res.ok) {
+      pendingProgram = null;
+      fail(res.error);
+      return;
+    }
+    if (!pendingProgram || pendingProgram.rec !== rec) return;
+    pendingProgram = null;
+    prog = rec.prog; U = rec.U; activeRec = rec;
+    activeProgramId = id; activeProgramKey = key;
+    gl.useProgram(prog);
+    markParamsDirty();
+    requestRender();
+  }
+
   function activateProgram(id) {
-    if (id === activeProgramId) return true;
+    const key = programKey(id);
+    if (key === activeProgramKey) { pendingProgram = null; return true; }
     try {
       const rec = getProgram(id);
-      prog = rec.prog; U = rec.U; activeProgramId = id;
+      if (rec.failed) { fail(rec.error); return false; }
+      if (rec.pending) {
+        pendingProgram = { id, key, rec };
+        scheduleProgramPoll();
+        return true;
+      }
+      pendingProgram = null;
+      prog = rec.prog; U = rec.U; activeRec = rec;
+      activeProgramId = id; activeProgramKey = key;
       gl.useProgram(prog);
       return true;
     } catch (e) {
@@ -5164,10 +5265,12 @@ void main() {
   }
 
   try {
-    const rec = getProgram(0);
-    prog = rec.prog; U = rec.U; activeProgramId = 0;
+    const rec = getProgram(0, true);
+    prog = rec.prog; U = rec.U; activeRec = rec;
+    activeProgramId = 0; activeProgramKey = programKey(0);
     gl.useProgram(prog);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND);
+    gl.bindVertexArray(gl.createVertexArray());
   } catch (e) { fail(e.message); return; }
 
   /* ------------------------------------------------------------------
@@ -5420,26 +5523,26 @@ void main() {
   let fractalType = 0;
 
   const PALETTES = [
-    { name: 'Aurora',       swatch: 'linear-gradient(90deg,#1c4b8f,#38c6d9,#f5e169,#8b5cf6)' },
-    { name: 'Ember',        swatch: 'linear-gradient(90deg,#3b0d0c,#c2410c,#f59e0b,#ffe8b0)' },
-    { name: 'Lagoon',       swatch: 'linear-gradient(90deg,#0e3b43,#14919b,#7ce8d5,#c8f7ef)' },
-    { name: 'Neon Bloom',   swatch: 'linear-gradient(90deg,#6d28d9,#db2777,#22d3ee,#f0abfc)' },
-    { name: 'Golden Hour',  swatch: 'linear-gradient(90deg,#5c3b12,#c98a2e,#ffd479,#fff3c4)' },
-    { name: 'Candy Floss',  swatch: 'linear-gradient(90deg,#7c3aed,#f9a8d4,#fde68a,#a5f3fc)' },
-    { name: 'Toxic Slime',  swatch: 'linear-gradient(90deg,#1a2e05,#65a30d,#d9f99d,#fef08a)' },
-    { name: 'Deep Space',   swatch: 'linear-gradient(90deg,#0b1026,#1e3a8a,#7c3aed,#c4b5fd)' },
-    { name: 'Copper Patina',swatch: 'linear-gradient(90deg,#2f1b12,#b45309,#2dd4bf,#99f6e4)' },
-    { name: 'Monolith',     swatch: 'linear-gradient(90deg,#111111,#555555,#aaaaaa,#ffffff)' },
-    { name: 'Retro Sunset', swatch: 'linear-gradient(90deg,#2b1055,#ff6b6b,#ffd166,#7209b7)', speed: 0.8 },
-    { name: 'Vaporwave',    swatch: 'linear-gradient(90deg,#00f0ff,#ff00a8,#7b2cff,#00ffb3)', speed: 2.4 },
-    { name: 'Arcade',       swatch: 'linear-gradient(90deg,#0b0f1a,#39ff14,#ff2bd6,#ffe600)', speed: 3.0 },
-    { name: 'New Age',      swatch: 'linear-gradient(90deg,#b8f2e6,#aed9e0,#ffa69e,#faf3dd)', speed: 0.6 },
-    { name: 'Crystal Aura', swatch: 'linear-gradient(90deg,#e0c3fc,#8ec5fc,#f9f871,#ffc3a0)', speed: 1.2 },
-    { name: 'Chakra',       swatch: 'linear-gradient(90deg,#ff3b3b,#ff9f1c,#ffe66d,#4ade80,#38bdf8,#a855f7)', speed: 0.9 },
-    { name: 'Punk',         swatch: 'linear-gradient(90deg,#111111,#ff003c,#f5f5f5,#ffbe0b)', speed: 1.6 },
-    { name: 'Acid Punk',    swatch: 'linear-gradient(90deg,#0a0a0a,#c6ff00,#ff00c8,#00ffd5)', speed: 4.0 },
-    { name: 'Cartoon',      swatch: 'linear-gradient(90deg,#ff3b30,#ffcc00,#34c759,#007aff)', speed: 1.0 },
-    { name: 'Comic Pop',    swatch: 'linear-gradient(90deg,#ff006e,#ffbe0b,#3a86ff,#8338ec)', speed: 2.0 }
+    { name: 'Aurora',       swatch: 'linear-gradient(90deg,#1c4b8f,#38c6d9,#f5e169,#8b5cf6)', a:[0.50, 0.50, 0.50], b:[0.50, 0.50, 0.50], c:[1.00, 1.00, 1.00], d:[0.00, 0.15, 0.35] },
+    { name: 'Ember',        swatch: 'linear-gradient(90deg,#3b0d0c,#c2410c,#f59e0b,#ffe8b0)', a:[0.62, 0.16, 0.05], b:[0.38, 0.30, 0.14], c:[1.00, 1.00, 1.00], d:[0.00, 0.07, 0.17] },
+    { name: 'Lagoon',       swatch: 'linear-gradient(90deg,#0e3b43,#14919b,#7ce8d5,#c8f7ef)', a:[0.20, 0.52, 0.58], b:[0.28, 0.36, 0.36], c:[1.00, 1.00, 1.00], d:[0.10, 0.30, 0.55] },
+    { name: 'Neon Bloom',   swatch: 'linear-gradient(90deg,#6d28d9,#db2777,#22d3ee,#f0abfc)', a:[0.55, 0.32, 0.58], b:[0.45, 0.42, 0.42], c:[1.00, 1.00, 1.00], d:[0.00, 0.33, 0.67] },
+    { name: 'Golden Hour',  swatch: 'linear-gradient(90deg,#5c3b12,#c98a2e,#ffd479,#fff3c4)', a:[0.62, 0.36, 0.10], b:[0.38, 0.34, 0.16], c:[1.00, 0.90, 0.80], d:[0.00, 0.10, 0.22] },
+    { name: 'Candy Floss',  swatch: 'linear-gradient(90deg,#7c3aed,#f9a8d4,#fde68a,#a5f3fc)', a:[0.68, 0.36, 0.52], b:[0.30, 0.34, 0.30], c:[1.00, 1.00, 1.00], d:[0.00, 0.20, 0.44] },
+    { name: 'Toxic Slime',  swatch: 'linear-gradient(90deg,#1a2e05,#65a30d,#d9f99d,#fef08a)', a:[0.28, 0.55, 0.22], b:[0.32, 0.38, 0.24], c:[1.00, 1.00, 1.00], d:[0.06, 0.26, 0.46] },
+    { name: 'Deep Space',   swatch: 'linear-gradient(90deg,#0b1026,#1e3a8a,#7c3aed,#c4b5fd)', a:[0.18, 0.22, 0.42], b:[0.34, 0.34, 0.42], c:[1.00, 1.00, 1.00], d:[0.40, 0.55, 0.72] },
+    { name: 'Copper Patina',swatch: 'linear-gradient(90deg,#2f1b12,#b45309,#2dd4bf,#99f6e4)', a:[0.40, 0.52, 0.46], b:[0.36, 0.30, 0.30], c:[1.00, 1.00, 1.00], d:[0.02, 0.22, 0.40] },
+    { name: 'Monolith',     swatch: 'linear-gradient(90deg,#111111,#555555,#aaaaaa,#ffffff)', a:[0.55, 0.55, 0.55], b:[0.40, 0.40, 0.40], c:[1.00, 1.00, 1.00], d:[0.05, 0.05, 0.05] },
+    { name: 'Retro Sunset', swatch: 'linear-gradient(90deg,#2b1055,#ff6b6b,#ffd166,#7209b7)', speed: 0.8, a:[0.74, 0.24, 0.30], b:[0.26, 0.30, 0.26], c:[1.00, 1.00, 1.00], d:[0.00, 0.08, 0.20] },
+    { name: 'Vaporwave',    swatch: 'linear-gradient(90deg,#00f0ff,#ff00a8,#7b2cff,#00ffb3)', speed: 2.4, a:[0.44, 0.46, 0.62], b:[0.40, 0.44, 0.38], c:[1.60, 1.60, 1.60], d:[0.10, 0.34, 0.64] },
+    { name: 'Arcade',       swatch: 'linear-gradient(90deg,#0b0f1a,#39ff14,#ff2bd6,#ffe600)', speed: 3.0, a:[0.30, 0.52, 0.34], b:[0.42, 0.46, 0.44], c:[2.20, 2.20, 2.20], d:[0.02, 0.18, 0.42] },
+    { name: 'New Age',      swatch: 'linear-gradient(90deg,#b8f2e6,#aed9e0,#ffa69e,#faf3dd)', speed: 0.6, a:[0.60, 0.52, 0.56], b:[0.28, 0.30, 0.28], c:[0.80, 0.80, 0.80], d:[0.05, 0.30, 0.55] },
+    { name: 'Crystal Aura', swatch: 'linear-gradient(90deg,#e0c3fc,#8ec5fc,#f9f871,#ffc3a0)', speed: 1.2, a:[0.64, 0.60, 0.72], b:[0.34, 0.34, 0.28], c:[1.00, 1.50, 2.00], d:[0.10, 0.28, 0.52] },
+    { name: 'Chakra',       swatch: 'linear-gradient(90deg,#ff3b3b,#ff9f1c,#ffe66d,#4ade80,#38bdf8,#a855f7)', speed: 0.9, a:[0.52, 0.46, 0.46], b:[0.46, 0.46, 0.46], c:[1.00, 1.00, 1.00], d:[0.00, 0.33, 0.67] },
+    { name: 'Punk',         swatch: 'linear-gradient(90deg,#111111,#ff003c,#f5f5f5,#ffbe0b)', speed: 1.6, a:[0.28, 0.16, 0.18], b:[0.50, 0.22, 0.24], c:[1.20, 1.20, 1.20], d:[0.00, 0.12, 0.42] },
+    { name: 'Acid Punk',    swatch: 'linear-gradient(90deg,#0a0a0a,#c6ff00,#ff00c8,#00ffd5)', speed: 4.0, a:[0.32, 0.52, 0.22], b:[0.48, 0.42, 0.36], c:[2.60, 2.60, 2.60], d:[0.04, 0.24, 0.54] },
+    { name: 'Cartoon',      swatch: 'linear-gradient(90deg,#ff3b30,#ffcc00,#34c759,#007aff)', speed: 1.0, a:[0.58, 0.52, 0.42], b:[0.44, 0.48, 0.48], c:[1.00, 1.00, 1.00], d:[0.00, 0.33, 0.66] },
+    { name: 'Comic Pop',    swatch: 'linear-gradient(90deg,#ff006e,#ffbe0b,#3a86ff,#8338ec)', speed: 2.0, a:[0.60, 0.42, 0.52], b:[0.40, 0.46, 0.40], c:[2.00, 2.00, 2.00], d:[0.10, 0.40, 0.70] }
   ];
   let paletteIndex = 0;
   let colorShift = 0;
@@ -5450,6 +5553,7 @@ void main() {
     paletteNameEl.textContent = paletteIndex + ' · ' + p.name;
     paletteSwatchEl.style.background = p.swatch;
     syncColorSpeed();
+    markParamsDirty();
     requestRender();
   }
 
@@ -5526,9 +5630,16 @@ void main() {
       return { bound: Math.min(5.0, 1.5 + Math.abs(s) * 0.75), step: 0.80 };
     }
     if (t >= 15 && t <= 31) return { bound: 6.0, step: 0.65 };
-    if (t >= 32 && t <= 57) {
-      /* V6/V7 reach the radius-4 shell; keeping a 4.0 floor avoids cutting
-         the outer Menger shell while still scaling with large scale3 values. */
+    if (t === 46) {
+      /* Pwr2 Polynomial reaches farther than the other Menger variants. */
+      return { bound: Math.min(6.0, Math.max(4.0, 0.95 * Math.abs(params.m_scale3) + 0.2)), step: 0.80 };
+    }
+    if (t >= 32 && t <= 55) {
+      /* Most Menger variants fit inside a much tighter shell than 4.0. */
+      return { bound: Math.min(3.0, Math.max(2.5, 0.85 * Math.abs(params.m_scale3))), step: 0.80 };
+    }
+    if (t === 56 || t === 57) {
+      /* V6/V7 reach the radius-4 shell. */
       return { bound: Math.min(6.0, Math.max(4.0, 0.95 * Math.abs(params.m_scale3) + 0.2)), step: 0.80 };
     }
     return { bound: 4.0, step: 0.75 };
@@ -5561,9 +5672,10 @@ void main() {
   let rotXAngle = 0, rotYAngle = 0, rotZAngle = 0;
   const autoRotBuf = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
-  /* ---- Interactive resolution scaling + render-on-demand ---- */
+  /* ---- Interactive FBO scaling + render-on-demand ---- */
   const INTERACTIVE_SCALE = 0.55;
-  let renderScale = 1.0;
+  let interactive = false;
+  let offscreen = null;
   let interactionSettleTimer = 0;
   let needsRender = true;
   let rafId = 0;
@@ -5574,7 +5686,7 @@ void main() {
   function resizeCanvas() {
     const cssW = Math.max(1, window.innerWidth);
     const cssH = Math.max(1, window.innerHeight);
-    const s = Math.min(1, Math.sqrt(1.5e6 / (cssW * cssH))) * renderScale;
+    const s = Math.min(1, Math.sqrt(1.5e6 / (cssW * cssH)));
     const w = Math.max(1, Math.round(cssW * s));
     const h = Math.max(1, Math.round(cssH * s));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
@@ -5582,18 +5694,35 @@ void main() {
     requestRender();
   }
 
-  function beginInteraction() {
-    if (renderScale !== INTERACTIVE_SCALE) {
-      renderScale = INTERACTIVE_SCALE;
-      resizeCanvas();
+  function ensureOffscreen(w, h) {
+    if (offscreen && offscreen.w === w && offscreen.h === h) return offscreen;
+    if (offscreen) {
+      gl.deleteTexture(offscreen.tex);
+      gl.deleteFramebuffer(offscreen.fbo);
     }
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    offscreen = { fbo, tex, w, h };
+    return offscreen;
+  }
+
+  function beginInteraction() {
+    interactive = true;
     if (interactionSettleTimer) clearTimeout(interactionSettleTimer);
     interactionSettleTimer = setTimeout(() => {
       interactionSettleTimer = 0;
-      if (renderScale !== 1.0) {
-        renderScale = 1.0;
-        resizeCanvas();
-      }
+      if (dragging) return;
+      interactive = false;
+      requestRender();
     }, 160);
     requestRender();
   }
@@ -5602,10 +5731,9 @@ void main() {
     if (interactionSettleTimer) clearTimeout(interactionSettleTimer);
     interactionSettleTimer = setTimeout(() => {
       interactionSettleTimer = 0;
-      if (renderScale !== 1.0) {
-        renderScale = 1.0;
-        resizeCanvas();
-      }
+      if (dragging) return;
+      interactive = false;
+      requestRender();
     }, 100);
     requestRender();
   }
@@ -6202,7 +6330,8 @@ void main() {
 
   const ui = {};
   const animStates = {};
-  const intKeys = [
+  const activeAnims = new Set();
+  const intKeys = new Set([
     'max_iter','max_steps',
     'riem_cntDXY','riem_cntTXY','riem_cntDYZ','riem_cntTYZ',
     'riem_angle','riem_rotA','riem_rotB','riem_rotG',
@@ -6222,7 +6351,7 @@ void main() {
     's4d_startC','s4d_stopC','s4d_rotA1','s4d_rotB1','s4d_rotC1',
     's4d_rotA2','s4d_rotB2','s4d_rotC2','s4d_startR','s4d_stopR',
     'k_int32','k_int8X'
-  ];
+  ]);
 
   function refreshSlider(def) {
     const rec = ui[def.key]; if (!rec) return;
@@ -6230,6 +6359,24 @@ void main() {
     rec.val.textContent = def.fmt(v);
     const pct = ((v - def.min) / (def.max - def.min)) * 100;
     rec.input.style.setProperty('--pct', pct + '%');
+  }
+
+  function syncSliderRow(def) {
+    const rec = ui[def.key]; if (!rec) return;
+    if (rec.kind === 'checkbox') {
+      rec.input.checked = !!params[def.key];
+      rec.val.textContent = params[def.key] ? 'on' : 'off';
+      return;
+    }
+    rec.input.value = params[def.key];
+    refreshSlider(def);
+    const st = animStates[def.key];
+    if (st) {
+      rec.animChk.checked = st.enabled;
+      rec.animWrap.classList.toggle('on', st.enabled);
+      rec.row.classList.toggle('anim-on', st.enabled);
+      syncAnimRangeUI(def);
+    }
   }
 
   /* Animation range helpers. The range is stored on the animation state and
@@ -6272,6 +6419,7 @@ void main() {
       st.pos = clamp((v - lo) / span, 0, 1);
       if (st.pos >= 0.999) st.dir = -1;
       else if (st.pos <= 0.001) st.dir = 1;
+      markParamsDirty();
     } else {
       st.pos = clamp((params[def.key] - lo) / span, 0, 1);
     }
@@ -6367,7 +6515,8 @@ void main() {
 
       inp.addEventListener('input', () => {
         const raw = parseFloat(inp.value);
-        params[def.key] = intKeys.includes(def.key) ? Math.round(raw) : raw;
+        params[def.key] = intKeys.has(def.key) ? Math.round(raw) : raw;
+        markParamsDirty();
         refreshSlider(def);
         beginInteraction();
       });
@@ -6377,6 +6526,7 @@ void main() {
         const st = animStates[def.key];
         if (st && st.enabled) {
           st.enabled = false;
+          activeAnims.delete(def.key);
           animChk.checked = false;
           animWrap.classList.remove('on');
           row.classList.remove('anim-on');
@@ -6398,6 +6548,8 @@ void main() {
           st.dir = (st.pos >= 0.999) ? -1 : 1;
         }
         st.enabled = animChk.checked;
+        if (st.enabled) activeAnims.add(def.key);
+        else activeAnims.delete(def.key);
         animWrap.classList.toggle('on', animChk.checked);
         row.classList.toggle('anim-on', animChk.checked);
         requestRender();
@@ -6439,8 +6591,10 @@ void main() {
       val.textContent = params[def.key] ? 'on' : 'off';
       inp.addEventListener('change', () => {
         params[def.key] = inp.checked;
+        markParamsDirty();
+        syncShaderVariants();
         val.textContent = inp.checked ? 'on' : 'off';
-        beginInteraction();
+        requestRender();
         /* ensure shortcuts wake up immediately after a click */
         if (document.activeElement === inp) inp.blur();
       });
@@ -6583,9 +6737,13 @@ void main() {
       else                                     visible = compat(def.fractal);
       if (fractalType === 59 && (key === 'xeno_sA' || key === 'xeno_sB' ||
           key === 'xeno_offX' || key === 'xeno_offY' || key === 'xeno_offZ')) visible = false;
-      rec.row.style.display = visible ? '' : 'none';
-      if (visible) rec.input.removeAttribute('disabled');
-      else rec.input.setAttribute('disabled', '');
+      const wasVisible = rec.row.style.display !== 'none';
+      if (wasVisible !== visible) {
+        rec.row.style.display = visible ? '' : 'none';
+        if (visible) rec.input.removeAttribute('disabled');
+        else rec.input.setAttribute('disabled', '');
+        if (visible) syncSliderRow(def);
+      }
     }
     riemWarn.classList.toggle('hidden', !(fractalType === 3 || fractalType === 60));
     msWarn.classList.toggle('hidden', !(fractalType === 4 || fractalType === 67));
@@ -6618,9 +6776,11 @@ void main() {
 
   function updateAnimations(dt) {
     if (dt > 0.15) dt = 0.15;
-    for (const def of SLIDERS) {
-      const st = animStates[def.key];
+    let changed = false;
+    for (const key of activeAnims) {
+      const st = animStates[key];
       if (!st || !st.enabled || st.speed <= 0) continue;
+      const def = ui[key].def;
       st.pos += st.dir * st.speed * dt;
       if (st.pos >= 1) { st.pos = 1; st.dir = -1; }
       if (st.pos <= 0) { st.pos = 0; st.dir = 1; }
@@ -6630,13 +6790,19 @@ void main() {
       let v = span > 1e-12 ? lo + st.pos * span : lo;
       if (def.step >= 1) v = Math.round(v);
       v = clamp(v, lo, hi);
+      if (params[def.key] === v) continue;
+      changed = true;
       params[def.key] = v;
-      ui[def.key].input.value = v;
-      refreshSlider(def);
+      if (!hudEl.classList.contains('hidden')) {
+        ui[key].input.value = v;
+        refreshSlider(def);
+      }
     }
+    if (changed) markParamsDirty();
   }
 
   function resetAll() {
+    activeAnims.clear();
     yaw = -0.68; pitch = 0.35; camDist = 5.0;
     rotXAngle = rotYAngle = rotZAngle = 0;
     autoRotBuf.set([1, 0, 0, 0, 1, 0, 0, 0, 1]);
@@ -6867,26 +7033,35 @@ void main() {
     params.m_add111d5X = 1.000; params.m_add111d5Y = 1.000; params.m_add111d5Z = 1.000; params.m_add111d5W = 0.500;
     params.m_int1 = 1; params.m_int8X = 8;
 
+    const hudVisible = !hudEl.classList.contains('hidden');
     for (const def of SLIDERS) {
       const rec = ui[def.key];
       const st = animStates[def.key];
-      rec.input.value = params[def.key];
-      refreshSlider(def);
+      const domVisible = hudVisible && rec.row.style.display !== 'none';
+      if (domVisible) {
+        rec.input.value = params[def.key];
+        refreshSlider(def);
+      }
       if (st) {
         st.enabled = false;
         st.min = def.min; st.max = def.max;
         st.pos = clamp((params[def.key] - def.min) / (def.max - def.min), 0, 1);
         st.dir = 1;
-        rec.animChk.checked = false;
-        rec.animWrap.classList.remove('on');
-        rec.row.classList.remove('anim-on');
-        syncAnimRangeUI(def);
+        if (domVisible) {
+          rec.animChk.checked = false;
+          rec.animWrap.classList.remove('on');
+          rec.row.classList.remove('anim-on');
+          syncAnimRangeUI(def);
+        }
       }
     }
     for (const def of CHECKBOXES) {
-      ui[def.key].input.checked = !!params[def.key];
-      ui[def.key].val.textContent = params[def.key] ? 'on' : 'off';
+      const rec = ui[def.key];
+      if (hudVisible && rec.row.style.display !== 'none') syncSliderRow(def);
     }
+    markParamsDirty();
+    syncShaderVariants();
+    requestRender();
   }
 
   function setFractal(t) {
@@ -6917,12 +7092,20 @@ void main() {
       refreshSlider(ui.bailout.def);
     }
     updateSliderVisibility();
+    markParamsDirty();
     requestRender();
+  }
+
+  function syncShaderVariants() {
+    const s = !!params.shadowsEnabled;
+    const w = !!params.wireframeEnabled;
+    if (s === shaderShadows && w === shaderWireframe) return;
+    shaderShadows = s; shaderWireframe = w;
+    activateProgram(fractalType);
   }
 
   /* Blur the select after change so shortcuts like H keep working */
   selectEl.addEventListener('change', () => {
-    beginInteraction();
     setFractal(parseInt(selectEl.value, 10));
     selectEl.blur();
   });
@@ -6967,10 +7150,16 @@ void main() {
     const k = e.key.toLowerCase();
 
     if (k === 'h') {
-      hudEl.classList.toggle('hidden');
+      const hidden = hudEl.classList.toggle('hidden');
+      if (!hidden) {
+        for (const def of SLIDERS) {
+          const rec = ui[def.key];
+          if (!rec || rec.row.style.display === 'none') continue;
+          syncSliderRow(def);
+        }
+      }
       e.preventDefault();
     } else if (k === 'r') {
-      beginInteraction();
       resetAll();
       e.preventDefault();
     } else if (/^(Digit|Numpad)[0-9]$/.test(e.code)) {
@@ -6987,29 +7176,45 @@ void main() {
      MATH
      ------------------------------------------------------------------ */
 
-  function normVec(v) {
+  function normVec(v, out) {
     const n = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     const d = Math.max(n, 1e-10);
-    return [v[0]/d, v[1]/d, v[2]/d];
+    out[0] = v[0]/d; out[1] = v[1]/d; out[2] = v[2]/d;
+    return out;
   }
-  function cross(a, b) {
-    return [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
+  function cross(a, b, out) {
+    const x = a[1]*b[2] - a[2]*b[1];
+    const y = a[2]*b[0] - a[0]*b[2];
+    const z = a[0]*b[1] - a[1]*b[0];
+    out[0] = x; out[1] = y; out[2] = z;
+    return out;
   }
-  function buildRotationMatrix(aDeg, bDeg, gDeg) {
+  function buildRotationMatrix(out, aDeg, bDeg, gDeg) {
     const a = aDeg * Math.PI / 180;
     const b = bDeg * Math.PI / 180;
     const g = gDeg * Math.PI / 180;
     const ca = Math.cos(a), sa = Math.sin(a);
     const cb = Math.cos(b), sb = Math.sin(b);
     const cg = Math.cos(g), sg = Math.sin(g);
-    return new Float32Array([
-      cg*cb, sg*cb, -sb,
-      cg*sb*sa - sg*ca, sg*sb*sa + cg*ca, cb*sa,
-      cg*sb*ca + sg*sa, sg*sb*ca - cg*sa, cb*ca
-    ]);
+    out[0] = cg*cb;            out[1] = sg*cb;            out[2] = -sb;
+    out[3] = cg*sb*sa - sg*ca; out[4] = sg*sb*sa + cg*ca; out[5] = cb*sa;
+    out[6] = cg*sb*ca + sg*sa; out[7] = sg*sb*ca - cg*sa; out[8] = cb*ca;
+    return out;
+  }
+
+  /* Column-major mat3 * vec3 (matches GLSL u_rotMat * v). */
+  function mulMat3Vec(m, v, out) {
+    const x = m[0]*v[0] + m[3]*v[1] + m[6]*v[2];
+    const y = m[1]*v[0] + m[4]*v[1] + m[7]*v[2];
+    const z = m[2]*v[0] + m[5]*v[1] + m[8]*v[2];
+    out[0] = x; out[1] = y; out[2] = z;
+    return out;
   }
 
   const rotBuf = new Float32Array(9);
+  const camA = [0, 0, 0], camB = [0, 0, 0], camC = [0, 0, 0], camD = [0, 0, 0];
+  const camRo = [0, 0, 0], camLight = [0, 0, 0];
+  let lastViewportW = -1, lastViewportH = -1;
 
   function autoRotateActive() {
     return autoRotate && (params.rot_x_speed !== 0 || params.rot_y_speed !== 0 || params.rot_z_speed !== 0);
@@ -7023,8 +7228,7 @@ void main() {
     rotXAngle = (rotXAngle + sx * step) % 360;
     rotYAngle = (rotYAngle + sy * step) % 360;
     rotZAngle = (rotZAngle + sz * step) % 360;
-    const M = buildRotationMatrix(rotXAngle, rotYAngle, rotZAngle);
-    for (let i = 0; i < 9; i++) autoRotBuf[i] = M[i];
+    buildRotationMatrix(autoRotBuf, rotXAngle, rotYAngle, rotZAngle);
   }
 
   function setAutoRotate(on) {
@@ -7040,33 +7244,74 @@ void main() {
     rotateBtn.blur();
   });
 
+  /* Uniform upload helpers. Locations for uniforms not used by the active
+     shader variant are null, so these skip the WebGL call entirely. */
+  function u1f(loc, v) { if (loc) gl.uniform1f(loc, v); }
+  function u1i(loc, v) { if (loc) gl.uniform1i(loc, v); }
+  function u2f(loc, x, y) { if (loc) gl.uniform2f(loc, x, y); }
+  function u3f(loc, x, y, z) { if (loc) gl.uniform3f(loc, x, y, z); }
+  function u4f(loc, x, y, z, w) { if (loc) gl.uniform4f(loc, x, y, z, w); }
+  function uM3(loc, buf) { if (loc) gl.uniformMatrix3fv(loc, false, buf); }
+
   function renderFrame() {
+    if (pendingProgram) return;
     const w = canvas.width, h = canvas.height;
-    gl.viewport(0, 0, w, h); gl.useProgram(prog);
-    gl.uniformMatrix3fv(U.u_rotMat, false, autoRotBuf);
+    const rw = interactive ? Math.max(1, Math.round(w * INTERACTIVE_SCALE)) : w;
+    const rh = interactive ? Math.max(1, Math.round(h * INTERACTIVE_SCALE)) : h;
+    if (interactive) ensureOffscreen(rw, rh);
+    if (rw !== lastViewportW || rh !== lastViewportH) {
+      gl.viewport(0, 0, rw, rh);
+      lastViewportW = rw; lastViewportH = rh;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, interactive ? offscreen.fbo : null);
+    uM3(U.u_rotMat, autoRotBuf);
 
     const cp = Math.cos(pitch);
     const rox = camDist * cp * Math.cos(yaw);
     const roy = camDist * cp * Math.sin(yaw);
     const roz = camDist * Math.sin(pitch);
 
-    const forward = normVec([-rox, -roy, -roz]);
-    const right = normVec(cross(forward, [0, 0, 1]));
-    const up = cross(right, forward);
+    camB[0] = -rox; camB[1] = -roy; camB[2] = -roz;
+    normVec(camB, camA);
+    camB[0] = 0; camB[1] = 0; camB[2] = 1;
+    cross(camA, camB, camC); normVec(camC, camC);
+    cross(camC, camA, camB);
+    const forward = camA, right = camC, up = camB;
 
-    gl.uniform2f(U.u_resolution, w, h);
-    gl.uniform3f(U.u_ro, rox, roy, roz);
-    gl.uniform3f(U.u_forward, forward[0], forward[1], forward[2]);
-    gl.uniform3f(U.u_right, right[0], right[1], right[2]);
-    gl.uniform3f(U.u_up, up[0], up[1], up[2]);
+    const tune = fractalTuning(fractalType);
+    camD[0] = rox; camD[1] = roy; camD[2] = roz;
+    mulMat3Vec(autoRotBuf, camD, camRo);
+    camD[0] = 1.5; camD[1] = -1.0; camD[2] = 2.0;
+    mulMat3Vec(autoRotBuf, camD, camLight);
+    normVec(camLight, camLight);
+    const cc = camRo[0]*camRo[0] + camRo[1]*camRo[1] + camRo[2]*camRo[2]
+             - tune.bound * tune.bound;
 
-    gl.uniform1i(U.u_shadowsEnabled, params.shadowsEnabled ? 1 : 0);
-    gl.uniform1i(U.u_wireframeEnabled, params.wireframeEnabled ? 1 : 0);
-    gl.uniform1i(U.u_palette, paletteIndex);
-    gl.uniform1f(U.u_colorShift, colorShift);
+    u2f(U.u_resolution, rw, rh);
+    u1f(U.u_pixEps, 0.75 / (1.6 * rh));
+    u3f(U.u_roObj, camRo[0], camRo[1], camRo[2]);
+    u3f(U.u_lightDir, camLight[0], camLight[1], camLight[2]);
+    u1f(U.u_cc, cc);
+    u3f(U.u_forward, forward[0], forward[1], forward[2]);
+    u3f(U.u_right, right[0], right[1], right[2]);
+    u3f(U.u_up, up[0], up[1], up[2]);
+
+    u1f(U.u_colorShift, colorShift);
+
+    const uploadFractal = !!activeRec && activeRec.uploadedVersion !== paramsVersion;
+    if (uploadFractal) {
+    u1f(U.u_boundR, tune.bound);
+    u1i(U.u_shadowsEnabled, params.shadowsEnabled ? 1 : 0);
+    u1i(U.u_wireframeEnabled, params.wireframeEnabled ? 1 : 0);
+    u1i(U.u_palette, paletteIndex);
+    const pal = PALETTES[paletteIndex];
+    u3f(U.u_palA, pal.a[0], pal.a[1], pal.a[2]);
+    u3f(U.u_palB, pal.b[0], pal.b[1], pal.b[2]);
+    u3f(U.u_palC, pal.c[0], pal.c[1], pal.c[2]);
+    u3f(U.u_palD, pal.d[0], pal.d[1], pal.d[2]);
     const col = fractalColor(fractalType);
-    gl.uniform1f(U.u_trapOffset, col.offset);
-    gl.uniform1f(U.u_trapScale, col.scale);
+    u1f(U.u_trapOffset, col.offset);
+    u1f(U.u_trapScale, col.scale);
 
     let pwr;
     if (fractalType === 3) pwr = params.riem_power;
@@ -7079,437 +7324,462 @@ void main() {
     else if (fractalType === 60) pwr = params.riem_power;
     else pwr = params.power;
 
-    gl.uniform1f(U.u_power, pwr);
-    gl.uniform1f(U.u_wo_scale, params.wo_scale);
-    gl.uniform1f(U.u_wi_scale, params.wi_scale);
-    gl.uniform1f(U.u_zz_scale, params.zz_scale);
-    gl.uniform1f(U.u_eps, getEps());
-    const tune = fractalTuning(fractalType);
-    gl.uniform1f(U.u_boundR, tune.bound);
-    gl.uniform1f(U.u_stepScale, tune.step);
-    gl.uniform1i(U.u_max_iter, params.max_iter | 0);
-    gl.uniform1i(U.u_max_steps, params.max_steps | 0);
-    gl.uniform1f(U.u_bailout, params.bailout);
+    u1f(U.u_power, pwr);
+    u1f(U.u_wo_scale, params.wo_scale);
+    u1f(U.u_wi_scale, params.wi_scale);
+    u1f(U.u_zz_scale, params.zz_scale);
+    u1f(U.u_eps, getEps());
+    u1f(U.u_stepScale, tune.step);
+    u1i(U.u_max_iter, params.max_iter | 0);
+    u1i(U.u_max_steps, params.max_steps | 0);
+    u1f(U.u_bailout, params.bailout);
+    u1f(U.u_bailout2, params.bailout * params.bailout);
 
-    gl.uniform3f(U.u_offset, params.off_x, params.off_y, params.off_z);
-    gl.uniform1f(U.u_mb_alpha, params.mb_alpha);
-    gl.uniform1f(U.u_mb_beta, params.mb_beta);
-    gl.uniform1f(U.u_mb_absA, params.mb_absA);
-    gl.uniform1f(U.u_mb_absB, params.mb_absB);
-    gl.uniform1f(U.u_mb_gamma, params.mb_gamma);
-    gl.uniform1f(U.u_mb_varPower, params.mb_varPower);
-    gl.uniform3f(U.u_mb_p2Scale, params.mb_p2ScaleX, params.mb_p2ScaleY, params.mb_p2ScaleZ);
-    gl.uniform3f(U.u_mb_off000, params.mb_off000X, params.mb_off000Y, params.mb_off000Z);
-    gl.uniform1f(U.u_mb_p3ScaleA, params.mb_p3ScaleA);
-    gl.uniform1f(U.u_mb_p3ScaleZ, params.mb_p3ScaleZ);
-    gl.uniform1f(U.u_mb_p4Scale2, params.mb_p4Scale2);
-    gl.uniform1f(U.u_mb_p4ScaleA, params.mb_p4ScaleA);
-    gl.uniform1f(U.u_mb_p4ScaleZ, params.mb_p4ScaleZ);
-    gl.uniform3f(U.u_mb_qdMul, params.mb_qdMulX, params.mb_qdMulY, params.mb_qdMulZ);
-    gl.uniform1f(U.u_mb_qdZR, params.mb_qdZR);
-    gl.uniform3f(U.u_mb_qdAdd, params.mb_qdAddX, params.mb_qdAddY, params.mb_qdAddZ);
-    gl.uniform3f(U.u_mb_qtMul, params.mb_qtMulX, params.mb_qtMulY, params.mb_qtMulZ);
-    gl.uniform3f(U.u_mb_qtAdd, params.mb_qtAddX, params.mb_qtAddY, params.mb_qtAddZ);
-    gl.uniform1f(U.u_mb_deScale, params.mb_deScale);
-    gl.uniform1f(U.u_mb_deOffset, params.mb_deOffset);
-    gl.uniform1f(U.u_mb_sA, params.mb_sA);
-    gl.uniform1f(U.u_mb_sB, params.mb_sB);
-    gl.uniform1f(U.u_mb_zScale, params.mb_zScale);
-    gl.uniform1f(U.u_mb_tailScale, params.mb_tailScale);
-    gl.uniform1f(U.u_mb_plusPower, params.mb_plusPower);
-    gl.uniform1f(U.u_mb_kosTweak, params.mb_kosTweak);
-    gl.uniform1f(U.u_mb_kosOffZ, params.mb_kosOffZ);
-    gl.uniform3f(U.u_mb_lc, params.mb_lcX, params.mb_lcY, params.mb_lcZ);
-    gl.uniform3f(U.u_b3_scale, params.b3_scaleX, params.b3_scaleY, params.b3_scaleZ);
-    gl.uniform3f(U.u_b3_offset, params.b3_offX, params.b3_offY, params.b3_offZ);
-    gl.uniform3f(U.u_q1_scale, params.q1_scaleX, params.q1_scaleY, params.q1_scaleZ);
-    gl.uniform3f(U.u_q1_offset, params.q1_offX, params.q1_offY, params.q1_offZ);
-    gl.uniform1f(U.u_q1_deScale, params.q1_deScale);
-    gl.uniform1f(U.u_q1_deOffset, params.q1_deOffset);
-    gl.uniform4f(U.u_hc1_mult, params.hc1_multX, params.hc1_multY, params.hc1_multZ, params.hc1_multW);
-    gl.uniform4f(U.u_hc1_offset, params.hc1_offX, params.hc1_offY, params.hc1_offZ, params.hc1_offW);
-    gl.uniform1f(U.u_hc1_deScale, params.hc1_deScale);
-    gl.uniform1f(U.u_hc1_deOffset, params.hc1_deOffset);
-    gl.uniform1f(U.u_iq8_scaleA, params.iq8_scaleA);
-    gl.uniform1f(U.u_iq8_scaleX, params.iq8_scaleX);
-    gl.uniform1f(U.u_iq8_scaleZ, params.iq8_scaleZ);
-    gl.uniform3f(U.u_m2_scale, params.m2_scaleX, params.m2_scaleY, params.m2_scaleZ);
-    gl.uniform3f(U.u_m2_offset, params.m2_offX, params.m2_offY, params.m2_offZ);
-    gl.uniform3f(U.u_ms_symAdd, params.ms_symAddX, params.ms_symAddY, params.ms_symAddZ);
-    gl.uniform1f(U.u_ms_symScale, params.ms_symScale);
-    gl.uniform1f(U.u_mb_phiScale, params.mb_phiScale);
-    gl.uniform1f(U.u_mb_eyeB, params.mb_eyeB);
-    gl.uniform1f(U.u_mb_eyeC, params.mb_eyeC);
-    gl.uniform1f(U.u_mb_bmPower, params.mb_bmPower);
-    gl.uniform1f(U.u_mb_bmScaleA, params.mb_bmScaleA);
-    gl.uniform1f(U.u_mb_bmScaleB, params.mb_bmScaleB);
-    gl.uniform1i(U.u_mb_preX, params.mb_preX ? 1 : 0);
-    gl.uniform1i(U.u_mb_preY, params.mb_preY ? 1 : 0);
-    gl.uniform1i(U.u_mb_preZ, params.mb_preZ ? 1 : 0);
-    gl.uniform1i(U.u_mb_postX, params.mb_postX ? 1 : 0);
-    gl.uniform1i(U.u_mb_postY, params.mb_postY ? 1 : 0);
-    gl.uniform1i(U.u_mb_postZ, params.mb_postZ ? 1 : 0);
-    gl.uniform1i(U.u_mb_posZ, params.mb_posZ ? 1 : 0);
-    gl.uniform3f(U.u_q3_mult, params.q3_multX, params.q3_multY, params.q3_multZ);
-    gl.uniform3f(U.u_q3_offset, params.q3_offX, params.q3_offY, params.q3_offZ);
-    gl.uniform1f(U.u_q3_scaleA, params.q3_scaleA);
-    gl.uniform4f(U.u_q4_mult, params.q4_multX, params.q4_multY, params.q4_multZ, params.q4_multW);
-    gl.uniform4f(U.u_q4_offset, params.q4_offX, params.q4_offY, params.q4_offZ, params.q4_offW);
-    gl.uniform4f(U.u_hc2_mult, params.hc2_multX, params.hc2_multY, params.hc2_multZ, params.hc2_multW);
-    gl.uniform4f(U.u_hc2_offset, params.hc2_offX, params.hc2_offY, params.hc2_offZ, params.hc2_offW);
-    gl.uniform1f(U.u_hc2_deScale, params.hc2_deScale);
-    gl.uniform1f(U.u_hc2_deOffset, params.hc2_deOff);
-    gl.uniform1f(U.u_xeno_alpha, params.xeno_alpha);
-    gl.uniform1f(U.u_xeno_beta, params.xeno_beta);
-    gl.uniform1f(U.u_xeno_sA, params.xeno_sA);
-    gl.uniform1f(U.u_xeno_sB, params.xeno_sB);
-    gl.uniform1f(U.u_xeno_expOff, params.xeno_expOff);
-    gl.uniform1f(U.u_xeno_scaleC, params.xeno_scaleC);
-    gl.uniform1f(U.u_xeno_deOff, params.xeno_deOff);
-    gl.uniform3f(U.u_xeno_offset, params.xeno_offX, params.xeno_offY, params.xeno_offZ);
+    u3f(U.u_offset, params.off_x, params.off_y, params.off_z);
+    u1f(U.u_mb_alpha, params.mb_alpha);
+    u1f(U.u_mb_beta, params.mb_beta);
+    u1f(U.u_mb_absA, params.mb_absA);
+    u1f(U.u_mb_absB, params.mb_absB);
+    u1f(U.u_mb_gamma, params.mb_gamma);
+    u1f(U.u_mb_varPower, params.mb_varPower);
+    u3f(U.u_mb_p2Scale, params.mb_p2ScaleX, params.mb_p2ScaleY, params.mb_p2ScaleZ);
+    u3f(U.u_mb_off000, params.mb_off000X, params.mb_off000Y, params.mb_off000Z);
+    u1f(U.u_mb_p3ScaleA, params.mb_p3ScaleA);
+    u1f(U.u_mb_p3ScaleZ, params.mb_p3ScaleZ);
+    u1f(U.u_mb_p4Scale2, params.mb_p4Scale2);
+    u1f(U.u_mb_p4ScaleA, params.mb_p4ScaleA);
+    u1f(U.u_mb_p4ScaleZ, params.mb_p4ScaleZ);
+    u3f(U.u_mb_qdMul, params.mb_qdMulX, params.mb_qdMulY, params.mb_qdMulZ);
+    u1f(U.u_mb_qdZR, params.mb_qdZR);
+    u3f(U.u_mb_qdAdd, params.mb_qdAddX, params.mb_qdAddY, params.mb_qdAddZ);
+    u3f(U.u_mb_qtMul, params.mb_qtMulX, params.mb_qtMulY, params.mb_qtMulZ);
+    u3f(U.u_mb_qtAdd, params.mb_qtAddX, params.mb_qtAddY, params.mb_qtAddZ);
+    u1f(U.u_mb_deScale, params.mb_deScale);
+    u1f(U.u_mb_deOffset, params.mb_deOffset);
+    u1f(U.u_mb_sA, params.mb_sA);
+    u1f(U.u_mb_sB, params.mb_sB);
+    u1f(U.u_mb_zScale, params.mb_zScale);
+    u1f(U.u_mb_tailScale, params.mb_tailScale);
+    u1f(U.u_mb_plusPower, params.mb_plusPower);
+    u1f(U.u_mb_kosTweak, params.mb_kosTweak);
+    u1f(U.u_mb_kosOffZ, params.mb_kosOffZ);
+    u3f(U.u_mb_lc, params.mb_lcX, params.mb_lcY, params.mb_lcZ);
+    u3f(U.u_b3_scale, params.b3_scaleX, params.b3_scaleY, params.b3_scaleZ);
+    u3f(U.u_b3_offset, params.b3_offX, params.b3_offY, params.b3_offZ);
+    u3f(U.u_q1_scale, params.q1_scaleX, params.q1_scaleY, params.q1_scaleZ);
+    u3f(U.u_q1_offset, params.q1_offX, params.q1_offY, params.q1_offZ);
+    u1f(U.u_q1_deScale, params.q1_deScale);
+    u1f(U.u_q1_deOffset, params.q1_deOffset);
+    u4f(U.u_hc1_mult, params.hc1_multX, params.hc1_multY, params.hc1_multZ, params.hc1_multW);
+    u4f(U.u_hc1_offset, params.hc1_offX, params.hc1_offY, params.hc1_offZ, params.hc1_offW);
+    u1f(U.u_hc1_deScale, params.hc1_deScale);
+    u1f(U.u_hc1_deOffset, params.hc1_deOffset);
+    u1f(U.u_iq8_scaleA, params.iq8_scaleA);
+    u1f(U.u_iq8_scaleX, params.iq8_scaleX);
+    u1f(U.u_iq8_scaleZ, params.iq8_scaleZ);
+    u3f(U.u_m2_scale, params.m2_scaleX, params.m2_scaleY, params.m2_scaleZ);
+    u3f(U.u_m2_offset, params.m2_offX, params.m2_offY, params.m2_offZ);
+    u3f(U.u_ms_symAdd, params.ms_symAddX, params.ms_symAddY, params.ms_symAddZ);
+    u1f(U.u_ms_symScale, params.ms_symScale);
+    u1f(U.u_mb_phiScale, params.mb_phiScale);
+    u1f(U.u_mb_eyeB, params.mb_eyeB);
+    u1f(U.u_mb_eyeC, params.mb_eyeC);
+    u1f(U.u_mb_bmPower, params.mb_bmPower);
+    u1f(U.u_mb_bmScaleA, params.mb_bmScaleA);
+    u1f(U.u_mb_bmScaleB, params.mb_bmScaleB);
+    u1i(U.u_mb_preX, params.mb_preX ? 1 : 0);
+    u1i(U.u_mb_preY, params.mb_preY ? 1 : 0);
+    u1i(U.u_mb_preZ, params.mb_preZ ? 1 : 0);
+    u1i(U.u_mb_postX, params.mb_postX ? 1 : 0);
+    u1i(U.u_mb_postY, params.mb_postY ? 1 : 0);
+    u1i(U.u_mb_postZ, params.mb_postZ ? 1 : 0);
+    u1i(U.u_mb_posZ, params.mb_posZ ? 1 : 0);
+    u3f(U.u_q3_mult, params.q3_multX, params.q3_multY, params.q3_multZ);
+    u3f(U.u_q3_offset, params.q3_offX, params.q3_offY, params.q3_offZ);
+    u1f(U.u_q3_scaleA, params.q3_scaleA);
+    u4f(U.u_q4_mult, params.q4_multX, params.q4_multY, params.q4_multZ, params.q4_multW);
+    u4f(U.u_q4_offset, params.q4_offX, params.q4_offY, params.q4_offZ, params.q4_offW);
+    u4f(U.u_hc2_mult, params.hc2_multX, params.hc2_multY, params.hc2_multZ, params.hc2_multW);
+    u4f(U.u_hc2_offset, params.hc2_offX, params.hc2_offY, params.hc2_offZ, params.hc2_offW);
+    u1f(U.u_hc2_deScale, params.hc2_deScale);
+    u1f(U.u_hc2_deOffset, params.hc2_deOff);
+    u1f(U.u_xeno_alpha, params.xeno_alpha);
+    u1f(U.u_xeno_beta, params.xeno_beta);
+    u1f(U.u_xeno_sA, params.xeno_sA);
+    u1f(U.u_xeno_sB, params.xeno_sB);
+    u1f(U.u_xeno_expOff, params.xeno_expOff);
+    u1f(U.u_xeno_scaleC, params.xeno_scaleC);
+    u1f(U.u_xeno_deOff, params.xeno_deOff);
+    u3f(U.u_xeno_offset, params.xeno_offX, params.xeno_offY, params.xeno_offZ);
 
-    gl.uniform1f(U.u_riem_scale, params.riem_scale);
-    gl.uniform1f(U.u_riem_offA, params.riem_offA);
-    gl.uniform1f(U.u_riem_offB, params.riem_offB);
-    gl.uniform1f(U.u_riem_angleDeg, params.riem_angle);
-    gl.uniform1i(U.u_riem_cntDXY, params.riem_cntDXY | 0);
-    gl.uniform1i(U.u_riem_cntTXY, params.riem_cntTXY | 0);
-    gl.uniform1i(U.u_riem_cntDYZ, params.riem_cntDYZ | 0);
-    gl.uniform1i(U.u_riem_cntTYZ, params.riem_cntTYZ | 0);
-    gl.uniform1i(U.u_riem_enX, params.riem_enX ? 1 : 0);
-    gl.uniform1i(U.u_riem_enX2, params.riem_enX2 ? 1 : 0);
-    gl.uniform1i(U.u_riem_enY, params.riem_enY ? 1 : 0);
-    gl.uniform1i(U.u_riem_enY2, params.riem_enY2 ? 1 : 0);
-    gl.uniform3f(U.u_riem_adC, params.riem_cX, params.riem_cY, params.riem_cZ);
-    gl.uniform1i(U.u_riem_analyticDE, params.riem_analyticDE ? 1 : 0);
-    gl.uniform1f(U.u_riem_deOffset, params.riem_deOff);
-    gl.uniform1f(U.u_riem_deScale, params.riem_deScale);
-    gl.uniform1i(U.u_riem_rotEnabled, params.riem_rotEnabled ? 1 : 0);
-    const M1 = buildRotationMatrix(params.riem_rotA, params.riem_rotB, params.riem_rotG);
-    for (let i = 0; i < 9; i++) rotBuf[i] = M1[i];
-    gl.uniformMatrix3fv(U.u_riem_rotMat, false, rotBuf);
+    u1f(U.u_riem_scale, params.riem_scale);
+    u1f(U.u_riem_offA, params.riem_offA);
+    u1f(U.u_riem_offB, params.riem_offB);
+    u1f(U.u_riem_angleDeg, params.riem_angle);
+    const riemRad = params.riem_angle * 0.017453292519943295;
+    u2f(U.u_riem_cs, Math.cos(riemRad), Math.sin(riemRad));
+    u1i(U.u_riem_cntDXY, params.riem_cntDXY | 0);
+    u1i(U.u_riem_cntTXY, params.riem_cntTXY | 0);
+    u1i(U.u_riem_cntDYZ, params.riem_cntDYZ | 0);
+    u1i(U.u_riem_cntTYZ, params.riem_cntTYZ | 0);
+    u1i(U.u_riem_enX, params.riem_enX ? 1 : 0);
+    u1i(U.u_riem_enX2, params.riem_enX2 ? 1 : 0);
+    u1i(U.u_riem_enY, params.riem_enY ? 1 : 0);
+    u1i(U.u_riem_enY2, params.riem_enY2 ? 1 : 0);
+    u3f(U.u_riem_adC, params.riem_cX, params.riem_cY, params.riem_cZ);
+    u1i(U.u_riem_analyticDE, params.riem_analyticDE ? 1 : 0);
+    u1f(U.u_riem_deOffset, params.riem_deOff);
+    u1f(U.u_riem_deScale, params.riem_deScale);
+    u1i(U.u_riem_rotEnabled, params.riem_rotEnabled ? 1 : 0);
+    if (U.u_riem_rotMat) {
+      buildRotationMatrix(rotBuf, params.riem_rotA, params.riem_rotB, params.riem_rotG);
+      uM3(U.u_riem_rotMat, rotBuf);
+    }
 
-    gl.uniform1f(U.u_riem8_scale, params.riem8_scale);
-    gl.uniform1f(U.u_riem8_offA, params.riem8_offA);
-    gl.uniform1f(U.u_riem8_offB, params.riem8_offB);
-    gl.uniform1f(U.u_riem8_angleDeg, params.riem8_angle);
-    gl.uniform3f(U.u_riem8_adC, params.riem8_cX, params.riem8_cY, params.riem8_cZ);
-    gl.uniform1i(U.u_riem8_analyticDE, params.riem8_analyticDE ? 1 : 0);
-    gl.uniform1i(U.u_riem8_mandelbrotMode, params.riem8_mandelbrotMode ? 1 : 0);
-    gl.uniform1f(U.u_riem8_deOffset, params.riem8_deOff);
-    gl.uniform1f(U.u_riem8_deScale, params.riem8_deScale);
-    gl.uniform1i(U.u_riem8_rotEnabled, params.riem8_rotEnabled ? 1 : 0);
-    const M2 = buildRotationMatrix(params.riem8_rotA, params.riem8_rotB, params.riem8_rotG);
-    for (let i = 0; i < 9; i++) rotBuf[i] = M2[i];
-    gl.uniformMatrix3fv(U.u_riem8_rotMat, false, rotBuf);
+    u1f(U.u_riem8_scale, params.riem8_scale);
+    u1f(U.u_riem8_offA, params.riem8_offA);
+    u1f(U.u_riem8_offB, params.riem8_offB);
+    u1f(U.u_riem8_angleDeg, params.riem8_angle);
+    const riem8Rad = params.riem8_angle * 0.017453292519943295;
+    u2f(U.u_riem8_cs, Math.cos(riem8Rad), Math.sin(riem8Rad));
+    u3f(U.u_riem8_adC, params.riem8_cX, params.riem8_cY, params.riem8_cZ);
+    u1i(U.u_riem8_analyticDE, params.riem8_analyticDE ? 1 : 0);
+    u1i(U.u_riem8_mandelbrotMode, params.riem8_mandelbrotMode ? 1 : 0);
+    u1f(U.u_riem8_deOffset, params.riem8_deOff);
+    u1f(U.u_riem8_deScale, params.riem8_deScale);
+    u1i(U.u_riem8_rotEnabled, params.riem8_rotEnabled ? 1 : 0);
+    if (U.u_riem8_rotMat) {
+      buildRotationMatrix(rotBuf, params.riem8_rotA, params.riem8_rotB, params.riem8_rotG);
+      uM3(U.u_riem8_rotMat, rotBuf);
+    }
 
-    gl.uniform1f(U.u_ms_power, params.ms_power);
-    gl.uniform1f(U.u_ms_phiPower, params.ms_phiPower);
-    gl.uniform1f(U.u_ms_minR, params.ms_minR);
-    gl.uniform1f(U.u_ms_scaleB, params.ms_scaleB);
-    gl.uniform1f(U.u_ms_offsetR, params.ms_offsetR);
-    gl.uniform1f(U.u_ms_scaleNeg1, params.ms_scaleNeg1);
-    gl.uniform1f(U.u_ms_anDEscale1, params.ms_anDEscale1);
-    gl.uniform1f(U.u_ms_anDEoff0, params.ms_anDEoff0);
-    gl.uniform3f(U.u_ms_scale3D, params.ms_scaleX, params.ms_scaleY, params.ms_scaleZ);
-    gl.uniform3f(U.u_ms_symOffset, params.ms_symOffX, params.ms_symOffY, params.ms_symOffZ);
-    gl.uniform1i(U.u_ms_startD, params.ms_startD | 0);
-    gl.uniform1i(U.u_ms_stopD, params.ms_stopD | 0);
-    gl.uniform1i(U.u_ms_startB, params.ms_startB | 0);
-    gl.uniform1i(U.u_ms_stopB, params.ms_stopB | 0);
-    gl.uniform1f(U.u_ms_sphOffset, params.ms_sphOffset);
-    gl.uniform1f(U.u_ms_sphScale, params.ms_sphScale);
-    gl.uniform1i(U.u_ms_preEnabled, params.ms_preEnabled ? 1 : 0);
-    gl.uniform1i(U.u_ms_asinMode, params.ms_asinMode ? 1 : 0);
-    gl.uniform1i(U.u_ms_rrMode, params.ms_rrMode ? 1 : 0);
-    gl.uniform1i(U.u_ms_sqrtRr, params.ms_sqrtRr ? 1 : 0);
-    gl.uniform1i(U.u_ms_swap, params.ms_swap ? 1 : 0);
-    gl.uniform1i(U.u_ms_sphEnabled, params.ms_sphEnabled ? 1 : 0);
-    gl.uniform1i(U.u_ms_customDE, params.ms_customDE ? 1 : 0);
+    u1f(U.u_ms_power, params.ms_power);
+    u1f(U.u_ms_phiPower, params.ms_phiPower);
+    u1f(U.u_ms_minR, params.ms_minR);
+    u1f(U.u_ms_scaleB, params.ms_scaleB);
+    u1f(U.u_ms_offsetR, params.ms_offsetR);
+    u1f(U.u_ms_scaleNeg1, params.ms_scaleNeg1);
+    u1f(U.u_ms_anDEscale1, params.ms_anDEscale1);
+    u1f(U.u_ms_anDEoff0, params.ms_anDEoff0);
+    u3f(U.u_ms_scale3D, params.ms_scaleX, params.ms_scaleY, params.ms_scaleZ);
+    u3f(U.u_ms_symOffset, params.ms_symOffX, params.ms_symOffY, params.ms_symOffZ);
+    u1i(U.u_ms_startD, params.ms_startD | 0);
+    u1i(U.u_ms_stopD, params.ms_stopD | 0);
+    u1i(U.u_ms_startB, params.ms_startB | 0);
+    u1i(U.u_ms_stopB, params.ms_stopB | 0);
+    u1f(U.u_ms_sphOffset, params.ms_sphOffset);
+    u1f(U.u_ms_sphScale, params.ms_sphScale);
+    u1i(U.u_ms_preEnabled, params.ms_preEnabled ? 1 : 0);
+    u1i(U.u_ms_asinMode, params.ms_asinMode ? 1 : 0);
+    u1i(U.u_ms_rrMode, params.ms_rrMode ? 1 : 0);
+    u1i(U.u_ms_sqrtRr, params.ms_sqrtRr ? 1 : 0);
+    u1i(U.u_ms_swap, params.ms_swap ? 1 : 0);
+    u1i(U.u_ms_sphEnabled, params.ms_sphEnabled ? 1 : 0);
+    u1i(U.u_ms_customDE, params.ms_customDE ? 1 : 0);
 
-    gl.uniform1i(U.u_ax_initQuadray, params.ax_initQuadray ? 1 : 0);
-    gl.uniform1i(U.u_ax_absFirst, params.ax_absFirst ? 1 : 0);
-    gl.uniform1f(U.u_ax_cadd, params.ax_cadd);
-    gl.uniform4f(U.u_ax_domainOffset, params.ax_offX, params.ax_offY, params.ax_offZ, params.ax_offW);
-    gl.uniform1f(U.u_ax_scale, params.ax_scale);
-    gl.uniform4f(U.u_ax_cpixel, params.ax_cpX, params.ax_cpY, params.ax_cpZ, params.ax_cpW);
-    gl.uniform1f(U.u_ax_anDEscale, params.ax_anDEscale);
-    gl.uniform1f(U.u_ax_anDEoff0, params.ax_anDEoff0);
+    u1i(U.u_ax_initQuadray, params.ax_initQuadray ? 1 : 0);
+    u1i(U.u_ax_absFirst, params.ax_absFirst ? 1 : 0);
+    u1f(U.u_ax_cadd, params.ax_cadd);
+    u4f(U.u_ax_domainOffset, params.ax_offX, params.ax_offY, params.ax_offZ, params.ax_offW);
+    u1f(U.u_ax_scale, params.ax_scale);
+    u4f(U.u_ax_cpixel, params.ax_cpX, params.ax_cpY, params.ax_cpZ, params.ax_cpW);
+    u1f(U.u_ax_anDEscale, params.ax_anDEscale);
+    u1f(U.u_ax_anDEoff0, params.ax_anDEoff0);
 
-    gl.uniform1i(U.u_b_prismEnabled, params.b_prismEnabled ? 1 : 0);
-    gl.uniform1i(U.u_b_t1Enabled, params.b_t1Enabled ? 1 : 0);
-    gl.uniform1i(U.u_b_t1RotEnabled, params.b_t1RotEnabled ? 1 : 0);
-    gl.uniform1i(U.u_b_benOriginalEnabled, params.b_benOriginalEnabled ? 1 : 0);
-    gl.uniform1i(U.u_b_treeEnabled, params.b_treeEnabled ? 1 : 0);
-    gl.uniform1i(U.u_b_altSwapEnabled, params.b_altSwapEnabled ? 1 : 0);
-    gl.uniform1i(U.u_b_cylEnabled, params.b_cylEnabled ? 1 : 0);
-    gl.uniform1i(U.u_b_juliaModeEnabled, params.b_juliaModeEnabled ? 1 : 0);
-    gl.uniform1i(U.u_b_rot2Enabled, params.b_rot2Enabled ? 1 : 0);
-    gl.uniform1i(U.u_b_anDEEnabled, params.b_anDEEnabled ? 1 : 0);
-    gl.uniform1i(U.u_b_startP, 0); gl.uniform1i(U.u_b_stopP, 32);
-    gl.uniform1i(U.u_b_startT1, 0); gl.uniform1i(U.u_b_stopT1, 32);
-    gl.uniform1i(U.u_b_startF, 0); gl.uniform1i(U.u_b_stopF, 32);
-    gl.uniform1i(U.u_b_startC, 0); gl.uniform1i(U.u_b_stopC, 32);
-    gl.uniform1i(U.u_b_startD, 0); gl.uniform1i(U.u_b_stopD, 32);
-    gl.uniform1i(U.u_b_startE, 0); gl.uniform1i(U.u_b_stopE, 32);
-    gl.uniform1f(U.u_b_dotScale, params.b_dotScale);
-    gl.uniform3f(U.u_b_mult000, params.b_mult000X, params.b_mult000Y, params.b_mult000Z);
-    gl.uniform3f(U.u_b_scale222, params.b_scale222X, params.b_scale222Y, params.b_scale222Z);
-    gl.uniform3f(U.u_b_off200, params.b_off200X, params.b_off200Y, params.b_off200Z);
-    gl.uniform3f(U.u_b_multA, params.b_multAX, params.b_multAY, params.b_multAZ);
-    gl.uniform3f(U.u_b_mult100, params.b_mult100X, params.b_mult100Y, params.b_mult100Z);
-    gl.uniform3f(U.u_b_off000, params.b_off000X, params.b_off000Y, params.b_off000Z);
-    gl.uniform1f(U.u_b_scaleA1, params.b_scaleA1);
-    gl.uniform1f(U.u_b_scale1, params.b_scale1);
-    gl.uniform1f(U.u_b_scaleC1, params.b_scaleC1);
-    gl.uniform1f(U.u_b_rot1A, params.b_rot1A);
-    gl.uniform1f(U.u_b_rot1B, params.b_rot1B);
-    gl.uniform1f(U.u_b_rot1G, params.b_rot1G);
-    gl.uniform1f(U.u_b_rot2A, params.b_rot2A);
-    gl.uniform1f(U.u_b_rot2B, params.b_rot2B);
-    gl.uniform1f(U.u_b_rot2G, params.b_rot2G);
-    gl.uniform1f(U.u_b_anDEscale, params.b_anDEscale);
-    gl.uniform1f(U.u_b_anDEoff, params.b_anDEoff);
+    u1i(U.u_b_prismEnabled, params.b_prismEnabled ? 1 : 0);
+    u1i(U.u_b_t1Enabled, params.b_t1Enabled ? 1 : 0);
+    u1i(U.u_b_t1RotEnabled, params.b_t1RotEnabled ? 1 : 0);
+    u1i(U.u_b_benOriginalEnabled, params.b_benOriginalEnabled ? 1 : 0);
+    u1i(U.u_b_treeEnabled, params.b_treeEnabled ? 1 : 0);
+    u1i(U.u_b_altSwapEnabled, params.b_altSwapEnabled ? 1 : 0);
+    u1i(U.u_b_cylEnabled, params.b_cylEnabled ? 1 : 0);
+    u1i(U.u_b_juliaModeEnabled, params.b_juliaModeEnabled ? 1 : 0);
+    u1i(U.u_b_rot2Enabled, params.b_rot2Enabled ? 1 : 0);
+    u1i(U.u_b_anDEEnabled, params.b_anDEEnabled ? 1 : 0);
+    u1i(U.u_b_startP, 0); u1i(U.u_b_stopP, 32);
+    u1i(U.u_b_startT1, 0); u1i(U.u_b_stopT1, 32);
+    u1i(U.u_b_startF, 0); u1i(U.u_b_stopF, 32);
+    u1i(U.u_b_startC, 0); u1i(U.u_b_stopC, 32);
+    u1i(U.u_b_startD, 0); u1i(U.u_b_stopD, 32);
+    u1i(U.u_b_startE, 0); u1i(U.u_b_stopE, 32);
+    u1f(U.u_b_dotScale, params.b_dotScale);
+    u3f(U.u_b_mult000, params.b_mult000X, params.b_mult000Y, params.b_mult000Z);
+    u3f(U.u_b_scale222, params.b_scale222X, params.b_scale222Y, params.b_scale222Z);
+    u3f(U.u_b_off200, params.b_off200X, params.b_off200Y, params.b_off200Z);
+    u3f(U.u_b_multA, params.b_multAX, params.b_multAY, params.b_multAZ);
+    u3f(U.u_b_mult100, params.b_mult100X, params.b_mult100Y, params.b_mult100Z);
+    u3f(U.u_b_off000, params.b_off000X, params.b_off000Y, params.b_off000Z);
+    u1f(U.u_b_scaleA1, params.b_scaleA1);
+    u1f(U.u_b_scale1, params.b_scale1);
+    u1f(U.u_b_scaleC1, params.b_scaleC1);
+    u1f(U.u_b_rot1A, params.b_rot1A);
+    u1f(U.u_b_rot1B, params.b_rot1B);
+    u1f(U.u_b_rot1G, params.b_rot1G);
+    u1f(U.u_b_rot2A, params.b_rot2A);
+    u1f(U.u_b_rot2B, params.b_rot2B);
+    u1f(U.u_b_rot2G, params.b_rot2G);
+    if (U.u_b_rot1Mat) {
+      buildRotationMatrix(rotBuf, params.b_rot1A, params.b_rot1B, params.b_rot1G);
+      uM3(U.u_b_rot1Mat, rotBuf);
+    }
+    if (U.u_b_rot2Mat) {
+      buildRotationMatrix(rotBuf, params.b_rot2A, params.b_rot2B, params.b_rot2G);
+      uM3(U.u_b_rot2Mat, rotBuf);
+    }
+    u1f(U.u_b_anDEscale, params.b_anDEscale);
+    u1f(U.u_b_anDEoff, params.b_anDEoff);
 
-    gl.uniform4f(U.u_bs_adc, params.bs_adcX, params.bs_adcY, params.bs_adcZ, params.bs_adcW);
+    u4f(U.u_bs_adc, params.bs_adcX, params.bs_adcY, params.bs_adcZ, params.bs_adcW);
 
-    gl.uniform1f(U.u_ab_scale, params.ab_scale);
-    gl.uniform1f(U.u_ab_scaleVary, params.ab_scaleVary);
-    gl.uniform1f(U.u_ab_maxR2, params.ab_maxR2);
-    gl.uniform1f(U.u_ab_minR2p25, params.ab_minR2p25);
-    gl.uniform1f(U.u_ab_scaleG1, params.ab_scaleG1);
-    gl.uniform1f(U.u_ab_deScale, params.ab_deScale);
-    gl.uniform1f(U.u_ab_deOffset, params.ab_deOffset);
-    gl.uniform3f(U.u_ab_add111, params.ab_addX, params.ab_addY, params.ab_addZ);
-    gl.uniform3f(U.u_ab_add000, params.ab_postX, params.ab_postY, params.ab_postZ);
-    gl.uniform3f(U.u_ab_scale3D, params.ab_scale3DX, params.ab_scale3DY, params.ab_scale3DZ);
-    gl.uniform3f(U.u_ab_cMult, params.ab_cMultX, params.ab_cMultY, params.ab_cMultZ);
-    gl.uniform3f(U.u_ab_mbOffset, params.ab_offX, params.ab_offY, params.ab_offZ);
-    gl.uniform1i(U.u_ab_zFold, params.ab_zFold ? 1 : 0);
-    gl.uniform1i(U.u_ab_quadEnabled, params.ab_quadEnabled ? 1 : 0);
-    gl.uniform1i(U.u_ab_swap, params.ab_swap ? 1 : 0);
-    gl.uniform1i(U.u_ab_addCPixel, params.ab_addCPixel ? 1 : 0);
-    gl.uniform1i(U.u_ab_addC, params.ab_addC ? 1 : 0);
-    gl.uniform1i(U.u_ab_rotEnabled, params.ab_rotEnabled ? 1 : 0);
-    gl.uniform1i(U.u_ab_analyticDE, params.ab_analyticDE ? 1 : 0);
-    gl.uniform1f(U.u_as_scale, params.as_scale);
-    gl.uniform1f(U.u_as_scaleVary, params.as_scaleVary);
-    gl.uniform1f(U.u_as_minR, params.as_minR);
-    gl.uniform1f(U.u_as_scale1, params.as_scale1);
-    gl.uniform3f(U.u_as_add111, params.as_addX, params.as_addY, params.as_addZ);
-    gl.uniform3f(U.u_as_cMult, params.as_cMultX, params.as_cMultY, params.as_cMultZ);
-    gl.uniform3f(U.u_as_off000, params.as_offX, params.as_offY, params.as_offZ);
-    gl.uniform3f(U.u_as_offA000, params.as_offAX, params.as_offAY, params.as_offAZ);
-    gl.uniform1i(U.u_as_addC, params.as_addC ? 1 : 0);
-    gl.uniform1i(U.u_as_cyl, params.as_cyl ? 1 : 0);
-    gl.uniform1i(U.u_ab_stopD, params.ab_stopD | 0);
-    gl.uniform1i(U.u_ab_startC, params.ab_startC | 0);
-    gl.uniform1i(U.u_ab_stopC, params.ab_stopC | 0);
-    const M3 = buildRotationMatrix(params.ab_rotA, params.ab_rotB, params.ab_rotG);
-    for (let i = 0; i < 9; i++) rotBuf[i] = M3[i];
-    gl.uniformMatrix3fv(U.u_ab_rotMat, false, rotBuf);
+    u1f(U.u_ab_scale, params.ab_scale);
+    u1f(U.u_ab_scaleVary, params.ab_scaleVary);
+    u1f(U.u_ab_maxR2, params.ab_maxR2);
+    u1f(U.u_ab_minR2p25, params.ab_minR2p25);
+    u1f(U.u_ab_scaleG1, params.ab_scaleG1);
+    u1f(U.u_ab_deScale, params.ab_deScale);
+    u1f(U.u_ab_deOffset, params.ab_deOffset);
+    u3f(U.u_ab_add111, params.ab_addX, params.ab_addY, params.ab_addZ);
+    u3f(U.u_ab_add000, params.ab_postX, params.ab_postY, params.ab_postZ);
+    u3f(U.u_ab_scale3D, params.ab_scale3DX, params.ab_scale3DY, params.ab_scale3DZ);
+    u3f(U.u_ab_cMult, params.ab_cMultX, params.ab_cMultY, params.ab_cMultZ);
+    u3f(U.u_ab_mbOffset, params.ab_offX, params.ab_offY, params.ab_offZ);
+    u1i(U.u_ab_zFold, params.ab_zFold ? 1 : 0);
+    u1i(U.u_ab_quadEnabled, params.ab_quadEnabled ? 1 : 0);
+    u1i(U.u_ab_swap, params.ab_swap ? 1 : 0);
+    u1i(U.u_ab_addCPixel, params.ab_addCPixel ? 1 : 0);
+    u1i(U.u_ab_addC, params.ab_addC ? 1 : 0);
+    u1i(U.u_ab_rotEnabled, params.ab_rotEnabled ? 1 : 0);
+    u1i(U.u_ab_analyticDE, params.ab_analyticDE ? 1 : 0);
+    u1f(U.u_as_scale, params.as_scale);
+    u1f(U.u_as_scaleVary, params.as_scaleVary);
+    u1f(U.u_as_minR, params.as_minR);
+    u1f(U.u_as_scale1, params.as_scale1);
+    u3f(U.u_as_add111, params.as_addX, params.as_addY, params.as_addZ);
+    u3f(U.u_as_cMult, params.as_cMultX, params.as_cMultY, params.as_cMultZ);
+    u3f(U.u_as_off000, params.as_offX, params.as_offY, params.as_offZ);
+    u3f(U.u_as_offA000, params.as_offAX, params.as_offAY, params.as_offAZ);
+    u1i(U.u_as_addC, params.as_addC ? 1 : 0);
+    u1i(U.u_as_cyl, params.as_cyl ? 1 : 0);
+    u1i(U.u_ab_stopD, params.ab_stopD | 0);
+    u1i(U.u_ab_startC, params.ab_startC | 0);
+    u1i(U.u_ab_stopC, params.ab_stopC | 0);
+    if (U.u_ab_rotMat) {
+      buildRotationMatrix(rotBuf, params.ab_rotA, params.ab_rotB, params.ab_rotG);
+      uM3(U.u_ab_rotMat, rotBuf);
+    }
 
-    gl.uniform1f(U.u_sp_scaleA2, params.sp_scaleA2);
-    gl.uniform1f(U.u_sp_anDEscale, params.sp_anDEscale);
-    gl.uniform1f(U.u_sp_anDEoff, params.sp_anDEoff);
-    gl.uniform3f(U.u_sp_offset111, params.sp_offX, params.sp_offY, params.sp_offZ);
-    gl.uniform1i(U.u_sp_normalFold, params.sp_normalFold ? 1 : 0);
-    gl.uniform1i(U.u_sp_reverseFold, params.sp_reverseFold ? 1 : 0);
-    gl.uniform1i(U.u_sp_rotEnabled, params.sp_rotEnabled ? 1 : 0);
-    gl.uniform1i(U.u_sp_analyticDE, params.sp_analyticDE ? 1 : 0);
-    gl.uniform1i(U.u_sp_startC, params.sp_startC | 0);
-    gl.uniform1i(U.u_sp_stopC, params.sp_stopC | 0);
-    gl.uniform1i(U.u_sp_rotStart, params.sp_rotStart | 0);
-    gl.uniform1i(U.u_sp_rotStop, params.sp_rotStop | 0);
-    const M4 = buildRotationMatrix(params.sp_rotA, params.sp_rotB, params.sp_rotG);
-    for (let i = 0; i < 9; i++) rotBuf[i] = M4[i];
-    gl.uniformMatrix3fv(U.u_sp_rotMat, false, rotBuf);
+    u1f(U.u_sp_scaleA2, params.sp_scaleA2);
+    u1f(U.u_sp_anDEscale, params.sp_anDEscale);
+    u1f(U.u_sp_anDEoff, params.sp_anDEoff);
+    u3f(U.u_sp_offset111, params.sp_offX, params.sp_offY, params.sp_offZ);
+    u1i(U.u_sp_normalFold, params.sp_normalFold ? 1 : 0);
+    u1i(U.u_sp_reverseFold, params.sp_reverseFold ? 1 : 0);
+    u1i(U.u_sp_rotEnabled, params.sp_rotEnabled ? 1 : 0);
+    u1i(U.u_sp_analyticDE, params.sp_analyticDE ? 1 : 0);
+    u1i(U.u_sp_startC, params.sp_startC | 0);
+    u1i(U.u_sp_stopC, params.sp_stopC | 0);
+    u1i(U.u_sp_rotStart, params.sp_rotStart | 0);
+    u1i(U.u_sp_rotStop, params.sp_rotStop | 0);
+    if (U.u_sp_rotMat) {
+      buildRotationMatrix(rotBuf, params.sp_rotA, params.sp_rotB, params.sp_rotG);
+      uM3(U.u_sp_rotMat, rotBuf);
+    }
 
     /* ---- Sierpinski variants: shared uniforms ---- */
     if (fractalType === 11) {
-      gl.uniform1f(U.u_s_scale2, params.s2_scale2);
-      gl.uniform3f(U.u_s_offset000, params.s2_off000X, params.s2_off000Y, params.s2_off000Z);
-      gl.uniform3f(U.u_s_offsetA000, params.s2_offAX, params.s2_offAY, params.s2_offAZ);
-      gl.uniform4f(U.u_s_scale1111, params.s2_scale1111X, params.s2_scale1111Y,
+      u1f(U.u_s_scale2, params.s2_scale2);
+      u3f(U.u_s_offset000, params.s2_off000X, params.s2_off000Y, params.s2_off000Z);
+      u3f(U.u_s_offsetA000, params.s2_offAX, params.s2_offAY, params.s2_offAZ);
+      u4f(U.u_s_scale1111, params.s2_scale1111X, params.s2_scale1111Y,
                    params.s2_scale1111Z, params.s2_scale1111W);
-      gl.uniform1f(U.u_s_inv0, params.s2_invert0);
-      gl.uniform1f(U.u_s_inv1, params.s2_invert1);
-      gl.uniform1f(U.u_s_anDEscale, params.s2_anDEscale);
-      gl.uniform1f(U.u_s_anDEoff, params.s2_anDEoff);
-      gl.uniform1i(U.u_s_preEnabled, params.s2_preEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_absEnabled, params.s2_absEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_absX, params.s2_absX ? 1 : 0);
-      gl.uniform1i(U.u_s_absY, params.s2_absY ? 1 : 0);
-      gl.uniform1i(U.u_s_absZ, params.s2_absZ ? 1 : 0);
-      gl.uniform1i(U.u_s_scaleVerts, params.s2_scaleVerts ? 1 : 0);
-      gl.uniform1i(U.u_s_sphEnabled, params.s2_sphEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_rotEnabled, params.s2_rotEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_analyticDE, params.s2_analyticDE ? 1 : 0);
-      gl.uniform1i(U.u_s_startT, params.s2_startT | 0);
-      gl.uniform1i(U.u_s_stopT1, params.s2_stopT1 | 0);
-      gl.uniform1i(U.u_s_startC, params.s2_startC | 0);
-      gl.uniform1i(U.u_s_stopC1, params.s2_stopC1 | 0);
-      gl.uniform1i(U.u_s_startD, params.s2_startD | 0);
-      gl.uniform1i(U.u_s_stopD1, params.s2_stopD1 | 0);
-      gl.uniform1i(U.u_s_startP, params.s2_startP | 0);
-      gl.uniform1i(U.u_s_stopP1, params.s2_stopP1 | 0);
-      gl.uniform1i(U.u_s_startS, params.s2_startS | 0);
-      gl.uniform1i(U.u_s_stopS, params.s2_stopS | 0);
-      gl.uniform1i(U.u_s_startR, params.s2_startR | 0);
-      gl.uniform1i(U.u_s_stopR, params.s2_stopR | 0);
-      const M2r2 = buildRotationMatrix(params.s2_rot2A, params.s2_rot2B, params.s2_rot2G);
-      for (let i = 0; i < 9; i++) rotBuf[i] = M2r2[i];
-      gl.uniformMatrix3fv(U.u_s_rot2Mat, false, rotBuf);
-      const M2r = buildRotationMatrix(params.s2_rotA, params.s2_rotB, params.s2_rotG);
-      for (let i = 0; i < 9; i++) rotBuf[i] = M2r[i];
-      gl.uniformMatrix3fv(U.u_s_rotMat, false, rotBuf);
+      u1f(U.u_s_inv0, params.s2_invert0);
+      u1f(U.u_s_inv1, params.s2_invert1);
+      u1f(U.u_s_anDEscale, params.s2_anDEscale);
+      u1f(U.u_s_anDEoff, params.s2_anDEoff);
+      u1i(U.u_s_preEnabled, params.s2_preEnabled ? 1 : 0);
+      u1i(U.u_s_absEnabled, params.s2_absEnabled ? 1 : 0);
+      u1i(U.u_s_absX, params.s2_absX ? 1 : 0);
+      u1i(U.u_s_absY, params.s2_absY ? 1 : 0);
+      u1i(U.u_s_absZ, params.s2_absZ ? 1 : 0);
+      u1i(U.u_s_scaleVerts, params.s2_scaleVerts ? 1 : 0);
+      u1i(U.u_s_sphEnabled, params.s2_sphEnabled ? 1 : 0);
+      u1i(U.u_s_rotEnabled, params.s2_rotEnabled ? 1 : 0);
+      u1i(U.u_s_analyticDE, params.s2_analyticDE ? 1 : 0);
+      u1i(U.u_s_startT, params.s2_startT | 0);
+      u1i(U.u_s_stopT1, params.s2_stopT1 | 0);
+      u1i(U.u_s_startC, params.s2_startC | 0);
+      u1i(U.u_s_stopC1, params.s2_stopC1 | 0);
+      u1i(U.u_s_startD, params.s2_startD | 0);
+      u1i(U.u_s_stopD1, params.s2_stopD1 | 0);
+      u1i(U.u_s_startP, params.s2_startP | 0);
+      u1i(U.u_s_stopP1, params.s2_stopP1 | 0);
+      u1i(U.u_s_startS, params.s2_startS | 0);
+      u1i(U.u_s_stopS, params.s2_stopS | 0);
+      u1i(U.u_s_startR, params.s2_startR | 0);
+      u1i(U.u_s_stopR, params.s2_stopR | 0);
+      buildRotationMatrix(rotBuf, params.s2_rot2A, params.s2_rot2B, params.s2_rot2G);
+      uM3(U.u_s_rot2Mat, rotBuf);
+      buildRotationMatrix(rotBuf, params.s2_rotA, params.s2_rotB, params.s2_rotG);
+      uM3(U.u_s_rotMat, rotBuf);
     } else if (fractalType === 12) {
-      gl.uniform1f(U.u_s_scaleA2, params.s3_scaleA2);
-      gl.uniform3f(U.u_s_offset000, params.s3_off000X, params.s3_off000Y, params.s3_off000Z);
-      gl.uniform3f(U.u_s_offset100, params.s3_off100X, params.s3_off100Y, params.s3_off100Z);
-      gl.uniform1f(U.u_s_anDEscale, params.s3_anDEscale);
-      gl.uniform1f(U.u_s_anDEoff, params.s3_anDEoff);
-      gl.uniform1i(U.u_s_preEnabled, params.s3_preEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_rotEnabled, params.s3_rotEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_reverseFold, params.s3_reverseFold ? 1 : 0);
-      gl.uniform1i(U.u_s_analyticDE, params.s3_analyticDE ? 1 : 0);
-      gl.uniform1i(U.u_s_startT, params.s3_startT | 0);
-      gl.uniform1i(U.u_s_stopT1, params.s3_stopT1 | 0);
-      gl.uniform1i(U.u_s_startC, params.s3_startC | 0);
-      gl.uniform1i(U.u_s_stopC, params.s3_stopC | 0);
-      gl.uniform1i(U.u_s_startR, params.s3_startR | 0);
-      gl.uniform1i(U.u_s_stopR, params.s3_stopR | 0);
-      const M3r2 = buildRotationMatrix(params.s3_rot2A, params.s3_rot2B, params.s3_rot2G);
-      for (let i = 0; i < 9; i++) rotBuf[i] = M3r2[i];
-      gl.uniformMatrix3fv(U.u_s_rot2Mat, false, rotBuf);
-      const M3r = buildRotationMatrix(params.s3_rotA, params.s3_rotB, params.s3_rotG);
-      for (let i = 0; i < 9; i++) rotBuf[i] = M3r[i];
-      gl.uniformMatrix3fv(U.u_s_rotMat, false, rotBuf);
+      u1f(U.u_s_scaleA2, params.s3_scaleA2);
+      u3f(U.u_s_offset000, params.s3_off000X, params.s3_off000Y, params.s3_off000Z);
+      u3f(U.u_s_offset100, params.s3_off100X, params.s3_off100Y, params.s3_off100Z);
+      u1f(U.u_s_anDEscale, params.s3_anDEscale);
+      u1f(U.u_s_anDEoff, params.s3_anDEoff);
+      u1i(U.u_s_preEnabled, params.s3_preEnabled ? 1 : 0);
+      u1i(U.u_s_rotEnabled, params.s3_rotEnabled ? 1 : 0);
+      u1i(U.u_s_reverseFold, params.s3_reverseFold ? 1 : 0);
+      u1i(U.u_s_analyticDE, params.s3_analyticDE ? 1 : 0);
+      u1i(U.u_s_startT, params.s3_startT | 0);
+      u1i(U.u_s_stopT1, params.s3_stopT1 | 0);
+      u1i(U.u_s_startC, params.s3_startC | 0);
+      u1i(U.u_s_stopC, params.s3_stopC | 0);
+      u1i(U.u_s_startR, params.s3_startR | 0);
+      u1i(U.u_s_stopR, params.s3_stopR | 0);
+      buildRotationMatrix(rotBuf, params.s3_rot2A, params.s3_rot2B, params.s3_rot2G);
+      uM3(U.u_s_rot2Mat, rotBuf);
+      buildRotationMatrix(rotBuf, params.s3_rotA, params.s3_rotB, params.s3_rotG);
+      uM3(U.u_s_rotMat, rotBuf);
     } else if (fractalType === 13) {
-      gl.uniform1f(U.u_s_scaleA2, params.s4_scaleA2);
-      gl.uniform1f(U.u_s_scaleA1, params.s4_scaleA1);
-      gl.uniform1f(U.u_s_maxR2, params.s4_maxR2);
-      gl.uniform3f(U.u_s_offset000, params.s4_off000X, params.s4_off000Y, params.s4_off000Z);
-      gl.uniform3f(U.u_s_offset111, params.s4_off111X, params.s4_off111Y, params.s4_off111Z);
-      gl.uniform3f(U.u_s_addC000, params.s4_adX, params.s4_adY, params.s4_adZ);
-      gl.uniform1f(U.u_s_anDEscale, params.s4_anDEscale);
-      gl.uniform1f(U.u_s_anDEoff, params.s4_anDEoff);
-      gl.uniform1i(U.u_s_sphEnabled, params.s4_sphEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_absEnabled, params.s4_absEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_absX, params.s4_absX ? 1 : 0);
-      gl.uniform1i(U.u_s_absY, params.s4_absY ? 1 : 0);
-      gl.uniform1i(U.u_s_absZ, params.s4_absZ ? 1 : 0);
-      gl.uniform1i(U.u_s_normalFold, params.s4_normalFold ? 1 : 0);
-      gl.uniform1i(U.u_s_reverseFold, params.s4_reverseFold ? 1 : 0);
-      gl.uniform1i(U.u_s_rotEnabled, params.s4_rotEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_analyticDE, params.s4_analyticDE ? 1 : 0);
-      gl.uniform1i(U.u_s_startD, params.s4_startD | 0);
-      gl.uniform1i(U.u_s_stopD1, params.s4_stopD1 | 0);
-      gl.uniform1i(U.u_s_startX, params.s4_startX | 0);
-      gl.uniform1i(U.u_s_stopX, params.s4_stopX | 0);
-      gl.uniform1i(U.u_s_startY, params.s4_startY | 0);
-      gl.uniform1i(U.u_s_stopY, params.s4_stopY | 0);
-      gl.uniform1i(U.u_s_startZ, params.s4_startZ | 0);
-      gl.uniform1i(U.u_s_stopZ, params.s4_stopZ | 0);
-      gl.uniform1i(U.u_s_startC, params.s4_startC | 0);
-      gl.uniform1i(U.u_s_stopC, params.s4_stopC | 0);
-      gl.uniform1i(U.u_s_startR, params.s4_startR | 0);
-      gl.uniform1i(U.u_s_stopR, params.s4_stopR | 0);
-      const M4r = buildRotationMatrix(params.s4_rotA, params.s4_rotB, params.s4_rotG);
-      for (let i = 0; i < 9; i++) rotBuf[i] = M4r[i];
-      gl.uniformMatrix3fv(U.u_s_rotMat, false, rotBuf);
+      u1f(U.u_s_scaleA2, params.s4_scaleA2);
+      u1f(U.u_s_scaleA1, params.s4_scaleA1);
+      u1f(U.u_s_maxR2, params.s4_maxR2);
+      u3f(U.u_s_offset000, params.s4_off000X, params.s4_off000Y, params.s4_off000Z);
+      u3f(U.u_s_offset111, params.s4_off111X, params.s4_off111Y, params.s4_off111Z);
+      u3f(U.u_s_addC000, params.s4_adX, params.s4_adY, params.s4_adZ);
+      u1f(U.u_s_anDEscale, params.s4_anDEscale);
+      u1f(U.u_s_anDEoff, params.s4_anDEoff);
+      u1i(U.u_s_sphEnabled, params.s4_sphEnabled ? 1 : 0);
+      u1i(U.u_s_absEnabled, params.s4_absEnabled ? 1 : 0);
+      u1i(U.u_s_absX, params.s4_absX ? 1 : 0);
+      u1i(U.u_s_absY, params.s4_absY ? 1 : 0);
+      u1i(U.u_s_absZ, params.s4_absZ ? 1 : 0);
+      u1i(U.u_s_normalFold, params.s4_normalFold ? 1 : 0);
+      u1i(U.u_s_reverseFold, params.s4_reverseFold ? 1 : 0);
+      u1i(U.u_s_rotEnabled, params.s4_rotEnabled ? 1 : 0);
+      u1i(U.u_s_analyticDE, params.s4_analyticDE ? 1 : 0);
+      u1i(U.u_s_startD, params.s4_startD | 0);
+      u1i(U.u_s_stopD1, params.s4_stopD1 | 0);
+      u1i(U.u_s_startX, params.s4_startX | 0);
+      u1i(U.u_s_stopX, params.s4_stopX | 0);
+      u1i(U.u_s_startY, params.s4_startY | 0);
+      u1i(U.u_s_stopY, params.s4_stopY | 0);
+      u1i(U.u_s_startZ, params.s4_startZ | 0);
+      u1i(U.u_s_stopZ, params.s4_stopZ | 0);
+      u1i(U.u_s_startC, params.s4_startC | 0);
+      u1i(U.u_s_stopC, params.s4_stopC | 0);
+      u1i(U.u_s_startR, params.s4_startR | 0);
+      u1i(U.u_s_stopR, params.s4_stopR | 0);
+      buildRotationMatrix(rotBuf, params.s4_rotA, params.s4_rotB, params.s4_rotG);
+      uM3(U.u_s_rotMat, rotBuf);
     } else if (fractalType === 14) {
-      gl.uniform1f(U.u_s_scaleA2, params.s4d_scaleA2);
-      gl.uniform4f(U.u_s_offset1111, params.s4d_off1111X, params.s4d_off1111Y,
+      u1f(U.u_s_scaleA2, params.s4d_scaleA2);
+      u4f(U.u_s_offset1111, params.s4d_off1111X, params.s4d_off1111Y,
                    params.s4d_off1111Z, params.s4d_off1111W);
-      gl.uniform3f(U.u_s_rot44a, params.s4d_rotA1, params.s4d_rotB1, params.s4d_rotC1);
-      gl.uniform3f(U.u_s_rot44b, params.s4d_rotA2, params.s4d_rotB2, params.s4d_rotC2);
-      gl.uniform1f(U.u_s_anDEscale, params.s4d_anDEscale);
-      gl.uniform1f(U.u_s_anDEoff, params.s4d_anDEoff);
-      gl.uniform1i(U.u_s_rotEnabled, params.s4d_rotEnabled ? 1 : 0);
-      gl.uniform1i(U.u_s_analyticDE, params.s4d_analyticDE ? 1 : 0);
-      gl.uniform1i(U.u_s_startC, params.s4d_startC | 0);
-      gl.uniform1i(U.u_s_stopC, params.s4d_stopC | 0);
-      gl.uniform1i(U.u_s_startR, params.s4d_startR | 0);
-      gl.uniform1i(U.u_s_stopR, params.s4d_stopR | 0);
+      u3f(U.u_s_rot44a, params.s4d_rotA1, params.s4d_rotB1, params.s4d_rotC1);
+      u3f(U.u_s_rot44b, params.s4d_rotA2, params.s4d_rotB2, params.s4d_rotC2);
+      const D2R = 0.017453292519943295;
+      const a1 = params.s4d_rotA1 * D2R, b1 = params.s4d_rotB1 * D2R, c1 = params.s4d_rotC1 * D2R;
+      const a2 = params.s4d_rotA2 * D2R, b2 = params.s4d_rotB2 * D2R, c2 = params.s4d_rotC2 * D2R;
+      u4f(U.u_s_rotCS0, Math.cos(a1), Math.sin(a1), Math.cos(b1), Math.sin(b1));
+      u4f(U.u_s_rotCS1, Math.cos(c1), Math.sin(c1), Math.cos(a2), Math.sin(a2));
+      u4f(U.u_s_rotCS2, Math.cos(b2), Math.sin(b2), Math.cos(c2), Math.sin(c2));
+      u1f(U.u_s_anDEscale, params.s4d_anDEscale);
+      u1f(U.u_s_anDEoff, params.s4d_anDEoff);
+      u1i(U.u_s_rotEnabled, params.s4d_rotEnabled ? 1 : 0);
+      u1i(U.u_s_analyticDE, params.s4d_analyticDE ? 1 : 0);
+      u1i(U.u_s_startC, params.s4d_startC | 0);
+      u1i(U.u_s_stopC, params.s4d_stopC | 0);
+      u1i(U.u_s_startR, params.s4d_startR | 0);
+      u1i(U.u_s_stopR, params.s4d_stopR | 0);
     }
 
     /* ---- Kleinian family (15-31): shared uniforms ---- */
     if (fractalType >= 15 && fractalType <= 31) {
-      gl.uniform1f(U.u_k_folding, params.k_folding);
-      gl.uniform1f(U.u_k_b, params.k_b);
-      gl.uniform1f(U.u_k_minR05, params.k_minR05);
-      gl.uniform1f(U.u_k_minR2p25, params.k_minR2p25);
-      gl.uniform1f(U.u_k_maxR2, params.k_maxR2);
-      gl.uniform1f(U.u_k_scale1, params.k_scale1);
-      gl.uniform1f(U.u_k_scaleA1, params.k_scaleA1);
-      gl.uniform1f(U.u_k_scaleB1, params.k_scaleB1);
-      gl.uniform1f(U.u_k_scaleG1, params.k_scaleG1);
-      gl.uniform1f(U.u_k_tweak, params.k_tweak005);
-      gl.uniform1f(U.u_k_offset1, params.k_offset1);
-      gl.uniform1f(U.u_k_anDEscale, params.k_anDEscale);
-      gl.uniform1f(U.u_k_anDEoff0, params.k_anDEoff0);
-      gl.uniform1f(U.u_k_offset0, params.k_offset0);
-      gl.uniform1f(U.u_k_offsetA0, params.k_offsetA0);
-      gl.uniform1f(U.u_k_offsetA1, params.k_offsetA1);
-      gl.uniform1f(U.u_k_offsetB0, params.k_offsetB0);
-      gl.uniform1f(U.u_k_offsetC0, params.k_offsetC0);
-      gl.uniform1f(U.u_k_offsetD0, params.k_offsetD0);
-      gl.uniform1f(U.u_k_offsetR0, params.k_offsetR0);
-      gl.uniform1f(U.u_k_offset02, params.k_offset02);
-      gl.uniform1f(U.u_k_scale2, params.k_scale2);
-      gl.uniform1f(U.u_k_scaleA2, params.k_scaleA2);
-      gl.uniform1f(U.u_k_scaleF1, params.k_scaleF1);
-      gl.uniform1f(U.u_k_scale3, params.k_scale3);
-      gl.uniform1f(U.u_k_scale1p1, params.k_scale1p1);
+      u1f(U.u_k_folding, params.k_folding);
+      u1f(U.u_k_b, params.k_b);
+      u1f(U.u_k_minR05, params.k_minR05);
+      u1f(U.u_k_minR2p25, params.k_minR2p25);
+      u1f(U.u_k_maxR2, params.k_maxR2);
+      u1f(U.u_k_scale1, params.k_scale1);
+      u1f(U.u_k_scaleA1, params.k_scaleA1);
+      u1f(U.u_k_scaleB1, params.k_scaleB1);
+      u1f(U.u_k_scaleG1, params.k_scaleG1);
+      u1f(U.u_k_tweak, params.k_tweak005);
+      u1f(U.u_k_offset1, params.k_offset1);
+      u1f(U.u_k_anDEscale, params.k_anDEscale);
+      u1f(U.u_k_anDEoff0, params.k_anDEoff0);
+      u1f(U.u_k_offset0, params.k_offset0);
+      u1f(U.u_k_offsetA0, params.k_offsetA0);
+      u1f(U.u_k_offsetA1, params.k_offsetA1);
+      u1f(U.u_k_offsetB0, params.k_offsetB0);
+      u1f(U.u_k_offsetC0, params.k_offsetC0);
+      u1f(U.u_k_offsetD0, params.k_offsetD0);
+      u1f(U.u_k_offsetR0, params.k_offsetR0);
+      u1f(U.u_k_offset02, params.k_offset02);
+      u1f(U.u_k_scale2, params.k_scale2);
+      u1f(U.u_k_scaleA2, params.k_scaleA2);
+      u1f(U.u_k_scaleF1, params.k_scaleF1);
+      u1f(U.u_k_scale3, params.k_scale3);
+      u1f(U.u_k_scale1p1, params.k_scale1p1);
 
-      gl.uniform3f(U.u_k_cmult000, 0.0, 0.0, 0.0);
-      gl.uniform3f(U.u_k_box, params.k_off111X, params.k_off111Y, params.k_off111Z);
-      gl.uniform3f(U.u_k_off000, 0.0, 0.0, 0.0);
-      gl.uniform3f(U.u_k_add000, params.k_add000X, params.k_add000Y, params.k_add000Z);
-      gl.uniform3f(U.u_k_offsetA000, params.k_offsetA000X, params.k_offsetA000Y, params.k_offsetA000Z);
-      gl.uniform3f(U.u_k_addA000, params.k_addA000X, params.k_addA000Y, params.k_addA000Z);
-      gl.uniform3f(U.u_k_add111, params.k_add111X, params.k_add111Y, params.k_add111Z);
-      gl.uniform3f(U.u_k_add222, params.k_add222X, params.k_add222Y, params.k_add222Z);
-      gl.uniform3f(U.u_k_csize, params.k_add0777X, params.k_add0777Y, params.k_add0777Z);
-      gl.uniform3f(U.u_k_offF000, 0.0, 0.0, 0.0);
-      gl.uniform4f(U.u_k_off1111, 1.0, 1.0, 1.0, 1.0);
+      u3f(U.u_k_cmult000, 0.0, 0.0, 0.0);
+      u3f(U.u_k_box, params.k_off111X, params.k_off111Y, params.k_off111Z);
+      u3f(U.u_k_off000, 0.0, 0.0, 0.0);
+      u3f(U.u_k_add000, params.k_add000X, params.k_add000Y, params.k_add000Z);
+      u3f(U.u_k_offsetA000, params.k_offsetA000X, params.k_offsetA000Y, params.k_offsetA000Z);
+      u3f(U.u_k_addA000, params.k_addA000X, params.k_addA000Y, params.k_addA000Z);
+      u3f(U.u_k_add111, params.k_add111X, params.k_add111Y, params.k_add111Z);
+      u3f(U.u_k_add222, params.k_add222X, params.k_add222Y, params.k_add222Z);
+      u3f(U.u_k_csize, params.k_add0777X, params.k_add0777Y, params.k_add0777Z);
+      u3f(U.u_k_offF000, 0.0, 0.0, 0.0);
+      u4f(U.u_k_off1111, 1.0, 1.0, 1.0, 1.0);
 
-      gl.uniform1i(U.u_k_spheresEnabled, params.k_spheresEnabled ? 1 : 0);
-      gl.uniform1i(U.u_k_int32, params.k_int32 | 0);
-      gl.uniform1i(U.u_k_int8X, params.k_int8X | 0);
+      u1i(U.u_k_spheresEnabled, params.k_spheresEnabled ? 1 : 0);
+      u1i(U.u_k_int32, params.k_int32 | 0);
+      u1i(U.u_k_int8X, params.k_int8X | 0);
     }
 
     /* ---- Menger family (32-57): shared uniforms ---- */
     if (fractalType >= 32 && fractalType <= 57) {
-      gl.uniform1f(U.u_m_scale3, params.m_scale3);
-      gl.uniform1f(U.u_m_offset1, params.m_offset1);
-      gl.uniform1f(U.u_m_offset0, params.m_offset0);
-      gl.uniform1f(U.u_m_offsetA1, params.m_offsetA1);
-      gl.uniform1f(U.u_m_offsetT1, params.m_offsetT1);
-      gl.uniform1f(U.u_m_offset2, params.m_offset2);
-      gl.uniform1f(U.u_m_anDEscale, params.m_anDEscale);
-      gl.uniform1f(U.u_m_anDEoff0, params.m_anDEoff0);
-      gl.uniform1f(U.u_m_anDEoff1, params.m_anDEoff1);
-      gl.uniform3f(U.u_m_offset111, params.m_offset111X, params.m_offset111Y, params.m_offset111Z);
-      gl.uniform3f(U.u_m_offsetA111, params.m_offsetA111X, params.m_offsetA111Y, params.m_offsetA111Z);
-      gl.uniform3f(U.u_m_offset222, params.m_offset222X, params.m_offset222Y, params.m_offset222Z);
-      gl.uniform3f(U.u_m_offset1105, params.m_offset1105X, params.m_offset1105Y, params.m_offset1105Z);
-      gl.uniform3f(U.u_m_cmult111, params.m_cmult111X, params.m_cmult111Y, params.m_cmult111Z);
-      gl.uniform3f(U.u_m_cmultA111, params.m_cmultA111X, params.m_cmultA111Y, params.m_cmultA111Z);
-      gl.uniform3f(U.u_m_cmult221, params.m_cmult221X, params.m_cmult221Y, params.m_cmult221Z);
-      gl.uniform3f(U.u_m_add0555, params.m_add0555X, params.m_add0555Y, params.m_add0555Z);
-      gl.uniform4f(U.u_m_add111d5, params.m_add111d5X, params.m_add111d5Y, params.m_add111d5Z, params.m_add111d5W);
-      gl.uniform1i(U.u_m_int1, params.m_int1 | 0);
-      gl.uniform1i(U.u_m_int8X, params.m_int8X | 0);
+      u1f(U.u_m_scale3, params.m_scale3);
+      u1f(U.u_m_offset1, params.m_offset1);
+      u1f(U.u_m_offset0, params.m_offset0);
+      u1f(U.u_m_offsetA1, params.m_offsetA1);
+      u1f(U.u_m_offsetT1, params.m_offsetT1);
+      u1f(U.u_m_offset2, params.m_offset2);
+      u1f(U.u_m_anDEscale, params.m_anDEscale);
+      u1f(U.u_m_anDEoff0, params.m_anDEoff0);
+      u1f(U.u_m_anDEoff1, params.m_anDEoff1);
+      u3f(U.u_m_offset111, params.m_offset111X, params.m_offset111Y, params.m_offset111Z);
+      u3f(U.u_m_offsetA111, params.m_offsetA111X, params.m_offsetA111Y, params.m_offsetA111Z);
+      u3f(U.u_m_offset222, params.m_offset222X, params.m_offset222Y, params.m_offset222Z);
+      u3f(U.u_m_offset1105, params.m_offset1105X, params.m_offset1105Y, params.m_offset1105Z);
+      u3f(U.u_m_cmult111, params.m_cmult111X, params.m_cmult111Y, params.m_cmult111Z);
+      u3f(U.u_m_cmultA111, params.m_cmultA111X, params.m_cmultA111Y, params.m_cmultA111Z);
+      u3f(U.u_m_cmult221, params.m_cmult221X, params.m_cmult221Y, params.m_cmult221Z);
+      u3f(U.u_m_add0555, params.m_add0555X, params.m_add0555Y, params.m_add0555Z);
+      u4f(U.u_m_add111d5, params.m_add111d5X, params.m_add111d5Y, params.m_add111d5Z, params.m_add111d5W);
+      u1i(U.u_m_int1, params.m_int1 | 0);
+      u1i(U.u_m_int8X, params.m_int8X | 0);
+    }
+    activeRec.uploadedVersion = paramsVersion;
     }
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (interactive && offscreen) {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, offscreen.fbo);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      gl.blitFramebuffer(0, 0, offscreen.w, offscreen.h,
+                         0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
   }
 
   function hasActiveAnimations() {
-    for (const def of SLIDERS) {
-      const st = animStates[def.key];
+    for (const key of activeAnims) {
+      const st = animStates[key];
       if (st && st.enabled && st.speed > 0 && Math.abs(st.max - st.min) > 1e-12) return true;
     }
     return false;
@@ -7544,7 +7814,7 @@ void main() {
     updateColorShift(dt);
     renderFrame();
     needsRender = false;
-    if (needsRender || hasActiveAnimations() || autoRotateActive() || colorSpeedActive()) {
+    if (hasActiveAnimations() || autoRotateActive() || colorSpeedActive()) {
       rafId = requestAnimationFrame(tick);
     } else {
       fpsEl.textContent = 'idle';
