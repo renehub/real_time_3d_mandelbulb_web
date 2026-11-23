@@ -31,9 +31,9 @@ Thanks buddhi1980!
   .title { display: flex; justify-content: space-between; align-items: baseline;
            font-size: 13px; color: #ebf0fa; letter-spacing: .02em; }
   .title .fps { color: #9fe0ff; font-size: 12px; }
-  .fractal-select { display: flex; margin-top: 8px; }
+  .fractal-select { display: flex; gap: 6px; margin-top: 8px; }
   .fractal-select select {
-    width: 100%; padding: 6px 24px 6px 8px; border-radius: 6px;
+    flex: 1 1 0; min-width: 0; padding: 6px 24px 6px 8px; border-radius: 6px;
     background-color: rgba(30, 40, 55, 0.7);
     border: 1px solid rgba(120, 140, 175, 0.5); color: #ebf6ff;
     font: 12px Consolas, monospace; letter-spacing: .02em; cursor: pointer; outline: none;
@@ -49,6 +49,16 @@ Thanks buddhi1980!
     color: #8fa6c9; background: #1e2837; font-weight: 700; }
   .fractal-select select option {
     color: #ebf6ff; background: #1e2837; font-weight: 400; }
+  .fractal-nav {
+    flex: 0 0 30px; display: flex; align-items: center; justify-content: center;
+    padding: 0; border-radius: 6px; cursor: pointer;
+    background: rgba(30, 40, 55, 0.7); color: #ebf6ff;
+    border: 1px solid rgba(120, 140, 175, 0.5);
+    font: 16px/1 Consolas, monospace; -webkit-user-select: none; user-select: none;
+  }
+  .fractal-nav:hover { background: rgba(50, 65, 90, 0.75); }
+  .fractal-nav:focus { border-color: rgba(95, 175, 255, 0.85); outline: none; }
+  .fractal-nav:active { background: rgba(95, 175, 255, 0.22); color: #fff; }
   .palette-row {
     display: flex; align-items: center; gap: 7px; margin-top: 7px;
     font: 11px Consolas, monospace; letter-spacing: .02em;
@@ -203,148 +213,11 @@ Thanks buddhi1980!
   <div class="title"><span>I like fractals</span><span class="fps" id="fps">-- FPS</span></div>
 
   <div class="fractal-select">
-    <select id="fractalSelect" aria-label="Fractal type">
-      <optgroup label="Mandelbulb">
-        <option value="0">Mandelbulb IQv2</option>
-        <option value="58">Mandelbulb IQ Pow8</option>
-        <option value="80">Mandelbulb</option>
-        <option value="81">Mandelbulb2</option>
-        <option value="82">Mandelbulb3</option>
-        <option value="83">Mandelbulb Power2</option>
-        <option value="84">Mandelbulb Abs</option>
-        <option value="85">Mandelbulb4</option>
-        <option value="86">Mandelbulb Abs Power2</option>
-        <option value="87">Mandelbulb Atan2 Power2</option>
-        <option value="88">Mandelbulb Bermarte</option>
-        <option value="89">Mandelbulb Eye</option>
-        <option value="90">Mandelbulb Juliabulb</option>
-        <option value="91">Mandelbulb Kali</option>
-        <option value="92">Mandelbulb Kali Multi</option>
-        <option value="93">Mandelbulb Kosalos</option>
-        <option value="94">Mandelbulb Kosalos V2</option>
-        <option value="95">Mandelbulb Lambda</option>
-        <option value="96">Mandelbulb Multi</option>
-        <option value="97">Mandelbulb Multi2</option>
-        <option value="98">Mandelbulb Plus Z</option>
-        <option value="99">Mandelbulb Pow2 V1</option>
-        <option value="100">Mandelbulb Pow2 V2</option>
-        <option value="101">Mandelbulb Pow2 V3</option>
-        <option value="102">Mandelbulb Pow2 V4</option>
-        <option value="103">Mandelbulb Power1234</option>
-        <option value="104">Mandelbulb Pupuku</option>
-        <option value="105">Mandelbulb Quadrat</option>
-        <option value="106">Mandelbulb Quat</option>
-        <option value="107">Mandelbulb Sin Cos</option>
-        <option value="108">Mandelbulb Sin Cos V2</option>
-        <option value="109">Mandelbulb Sin Cos V3</option>
-        <option value="110">Mandelbulb Sin Cos V4</option>
-        <option value="111">Mandelbulb Tails</option>
-        <option value="112">Mandelbulb Tails V2</option>
-        <option value="113">Mandelbulb Vary Power V1</option>
-      </optgroup>
-      <optgroup label="Benesi">
-        <option value="1">Benesi (Julia)</option>
-        <option value="7">Benesi Pwr2 Mandelbulb</option>
-      </optgroup>
-      <optgroup label="Xenodreambuie">
-        <option value="2">Xenodreambuie V2</option>
-        <option value="59">Xenodreambuie (V1)</option>
-        <option value="77">Xenodreambuie V3</option>
-      </optgroup>
-      <optgroup label="Riemann">
-        <option value="3">Riemann-Sphere Hobold (Multi)</option>
-        <option value="60">Riemann-Sphere Hobold (Power 4)</option>
-        <option value="5">Riemann-Sphere Hobold (Power 8)</option>
-      </optgroup>
-      <optgroup label="Msltoe">
-        <option value="4">Msltoe Toroidal V2</option>
-        <option value="67">Msltoe - Toroidal Bulb</option>
-        <option value="68">Msltoe - Sym2 Mod</option>
-        <option value="69">Msltoe - Sym3 Mod</option>
-        <option value="70">Msltoe - Sym3 Mod2</option>
-        <option value="71">Msltoe - Sym4 Mod</option>
-      </optgroup>
-      <optgroup label="Aexion">
-        <option value="62">Aexion</option>
-        <option value="6">Aexion4D_V2 (Quadray)</option>
-      </optgroup>
-      <optgroup label="Bristorbrot">
-        <option value="61">Bristorbrot (3D)</option>
-        <option value="8">Bristorbrot 4D</option>
-      </optgroup>
-      <optgroup label="Quaternion">
-        <option value="72">Quaternion</option>
-        <option value="73">Quaternion3D</option>
-        <option value="74">Quaternion 4D</option>
-        <option value="75">Hypercomplex</option>
-        <option value="76">Hypercomplex V2</option>
-      </optgroup>
-      <optgroup label="Abox">
-        <option value="9">Abox Mod11 (Mandelbox)</option>
-        <option value="63">Abox - Mod 1</option>
-        <option value="64">Abox - Mod 2</option>
-        <option value="65">Abox - Mod1 (MB3D)</option>
-        <option value="66">Abox 4D</option>
-      </optgroup>
-      <optgroup label="Amazing Surf">
-        <option value="78">Amazing Surf</option>
-        <option value="79">Amazing Surf - M3D</option>
-      </optgroup>
-      <optgroup label="Sierpinski">
-        <option value="10">Sierpinski 3D</option>
-        <option value="11">Sierpinski 3D V2</option>
-        <option value="12">Sierpinski 3D V3</option>
-        <option value="13">Sierpinski 3D V4</option>
-        <option value="14">Sierpinski 4D</option>
-      </optgroup>
-      <optgroup label="Kleinian">
-        <option value="15">Pseudo Kleinian stdDE</option>
-        <option value="16">Pseudo Kleinian</option>
-        <option value="17">Pseudo Kleinian Mod 1</option>
-        <option value="18">Pseudo Kleinian Mod 2</option>
-        <option value="19">Pseudo Kleinian Mod 3</option>
-        <option value="20">Pseudo Kleinian Mod 4</option>
-        <option value="21">Pseudo Kleinian Mod 5</option>
-        <option value="22">Pseudo Kleinian Mod 6</option>
-        <option value="23">Pseudo Kleinian Mod 7</option>
-        <option value="24">Pseudo Kleinian 4D</option>
-        <option value="25">Pseudo Kleinian Trig</option>
-        <option value="26">Pseudo Kleinian Trig V2</option>
-        <option value="27">Pseudo Kleinian Trig V3</option>
-        <option value="28">JosLeys Kleinian</option>
-        <option value="29">JosLeys Kleinian V2</option>
-        <option value="30">JosLeys Kleinian V3</option>
-        <option value="31">JosLeys Kleinian V4</option>
-      </optgroup>
-      <optgroup label="Menger">
-        <option value="32">Menger3</option>
-        <option value="33">Menger3 - M3D</option>
-        <option value="34">Menger 4D</option>
-        <option value="35">Menger 4D Mod1</option>
-        <option value="36">Menger 4D Mod2</option>
-        <option value="37">Menger - Chebyshev</option>
-        <option value="38">Menger - Cross KIFS</option>
-        <option value="39">Menger - Cross Mod1</option>
-        <option value="40">Menger - Middle Mod</option>
-        <option value="41">Menger - Mod 1</option>
-        <option value="42">Menger - Octo</option>
-        <option value="43">Menger - Poly Fold</option>
-        <option value="44">Menger - Prism Shape</option>
-        <option value="45">Menger - Prism Shape2</option>
-        <option value="46">Menger - Pwr2 Polynomial</option>
-        <option value="47">Menger - Pyramid</option>
-        <option value="48">Menger - Smooth</option>
-        <option value="49">Menger - Smooth Chebyshev</option>
-        <option value="50">Menger - Smooth Mod1</option>
-        <option value="51">Menger sponge</option>
-        <option value="52">Menger V2</option>
-        <option value="53">Menger V3</option>
-        <option value="54">Menger - V4</option>
-        <option value="55">Menger - V5</option>
-        <option value="56">Menger V6</option>
-        <option value="57">Menger V7</option>
-      </optgroup>
-    </select>
+    <button id="prevFractal" class="fractal-nav" type="button" aria-keyshortcuts="Z"
+            aria-label="Previous fractal" title="Previous fractal (Z)">&#8249;</button>
+    <select id="fractalSelect" aria-label="Fractal type"></select>
+    <button id="nextFractal" class="fractal-nav" type="button" aria-keyshortcuts="X"
+            aria-label="Next fractal" title="Next fractal (X)">&#8250;</button>
   </div>
   <div class="palette-row">
     <span class="palette-swatch" id="paletteSwatch"></span>
@@ -443,7 +316,7 @@ Thanks buddhi1980!
     Pyramid, V2, V3, V6 and V7.
   </div>
 
-  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: HUD · 0-9 / Shift+0-9: Palette · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
+  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: HUD · Z/X: Prev/Next fractal · 0-9 / Shift+0-9: Palette · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
 </div>
 
 <div id="err"></div>
@@ -458,6 +331,8 @@ Thanks buddhi1980!
   const rowsEl   = document.getElementById('rows');
   const errEl    = document.getElementById('err');
   const selectEl = document.getElementById('fractalSelect');
+  const prevFractalBtn = document.getElementById('prevFractal');
+  const nextFractalBtn = document.getElementById('nextFractal');
   const paletteNameEl = document.getElementById('paletteName');
   const paletteSwatchEl = document.getElementById('paletteSwatch');
   const colorSpeedInp = document.getElementById('colorSpeed');
@@ -497,6 +372,171 @@ Thanks buddhi1980!
   const parallelCompile = gl.getExtension('KHR_parallel_shader_compile');
 
   /* ------------------------------------------------------------------
+     FRACTAL REGISTRY
+     Single source of truth for the picker, the DE function each fractal
+     uses, and the ids referenced by SLIDERS / CHECKBOXES / FORMULA_INFO.
+     ------------------------------------------------------------------ */
+  const FRACTALS = [
+    /* Mandelbulb */
+    { id:   0, group: 'Mandelbulb', name: 'Mandelbulb IQv2', de: 'mandelbulbIqV2DE' },
+    { id:  58, group: 'Mandelbulb', name: 'Mandelbulb IQ Pow8', de: 'mandelbulbIqPow8DE' },
+    { id:  80, group: 'Mandelbulb', name: 'Mandelbulb', de: 'mandelbulbDE' },
+    { id:  81, group: 'Mandelbulb', name: 'Mandelbulb2', de: 'mandelbulb2DE' },
+    { id:  82, group: 'Mandelbulb', name: 'Mandelbulb3', de: 'mandelbulb3DE' },
+    { id:  83, group: 'Mandelbulb', name: 'Mandelbulb Power2', de: 'mandelbulbPower2DE' },
+    { id:  84, group: 'Mandelbulb', name: 'Mandelbulb Abs', de: 'mandelbulbAbsDE' },
+    { id:  85, group: 'Mandelbulb', name: 'Mandelbulb4', de: 'mandelbulb4DE' },
+    { id:  86, group: 'Mandelbulb', name: 'Mandelbulb Abs Power2', de: 'mandelbulbAbsPower2DE' },
+    { id:  87, group: 'Mandelbulb', name: 'Mandelbulb Atan2 Power2', de: 'mandelbulbAtan2Power2DE' },
+    { id:  88, group: 'Mandelbulb', name: 'Mandelbulb Bermarte', de: 'mandelbulbBermarteDE' },
+    { id:  89, group: 'Mandelbulb', name: 'Mandelbulb Eye', de: 'mandelbulbEyeDE' },
+    { id:  90, group: 'Mandelbulb', name: 'Mandelbulb Juliabulb', de: 'mandelbulbJuliabulbDE' },
+    { id:  91, group: 'Mandelbulb', name: 'Mandelbulb Kali', de: 'mandelbulbKaliDE' },
+    { id:  92, group: 'Mandelbulb', name: 'Mandelbulb Kali Multi', de: 'mandelbulbKaliMultiDE' },
+    { id:  93, group: 'Mandelbulb', name: 'Mandelbulb Kosalos', de: 'mandelbulbKosalosDE' },
+    { id:  94, group: 'Mandelbulb', name: 'Mandelbulb Kosalos V2', de: 'mandelbulbKosalosV2DE' },
+    { id:  95, group: 'Mandelbulb', name: 'Mandelbulb Lambda', de: 'mandelbulbLambdaDE' },
+    { id:  96, group: 'Mandelbulb', name: 'Mandelbulb Multi', de: 'mandelbulbMultiDE' },
+    { id:  97, group: 'Mandelbulb', name: 'Mandelbulb Multi2', de: 'mandelbulbMulti2DE' },
+    { id:  98, group: 'Mandelbulb', name: 'Mandelbulb Plus Z', de: 'mandelbulbPlusZDE' },
+    { id:  99, group: 'Mandelbulb', name: 'Mandelbulb Pow2 V1', de: 'mandelbulbPow2V1DE' },
+    { id: 100, group: 'Mandelbulb', name: 'Mandelbulb Pow2 V2', de: 'mandelbulbPow2V2DE' },
+    { id: 101, group: 'Mandelbulb', name: 'Mandelbulb Pow2 V3', de: 'mandelbulbPow2V3DE' },
+    { id: 102, group: 'Mandelbulb', name: 'Mandelbulb Pow2 V4', de: 'mandelbulbPow2V4DE' },
+    { id: 103, group: 'Mandelbulb', name: 'Mandelbulb Power1234', de: 'mandelbulbPower1234DE' },
+    { id: 104, group: 'Mandelbulb', name: 'Mandelbulb Pupuku', de: 'mandelbulbPupukuDE' },
+    { id: 105, group: 'Mandelbulb', name: 'Mandelbulb Quadrat', de: 'mandelbulbQuadratDE' },
+    { id: 106, group: 'Mandelbulb', name: 'Mandelbulb Quat', de: 'mandelbulbQuatDE' },
+    { id: 107, group: 'Mandelbulb', name: 'Mandelbulb Sin Cos', de: 'mandelbulbSinCosDE' },
+    { id: 108, group: 'Mandelbulb', name: 'Mandelbulb Sin Cos V2', de: 'mandelbulbSinCosV2DE' },
+    { id: 109, group: 'Mandelbulb', name: 'Mandelbulb Sin Cos V3', de: 'mandelbulbSinCosV3DE' },
+    { id: 110, group: 'Mandelbulb', name: 'Mandelbulb Sin Cos V4', de: 'mandelbulbSinCosV4DE' },
+    { id: 111, group: 'Mandelbulb', name: 'Mandelbulb Tails', de: 'mandelbulbTailsDE' },
+    { id: 112, group: 'Mandelbulb', name: 'Mandelbulb Tails V2', de: 'mandelbulbTailsDE' }, /* identical to 111 */
+    { id: 113, group: 'Mandelbulb', name: 'Mandelbulb Vary Power V1', de: 'mandelbulbVaryPowerDE' },
+    /* Benesi */
+    { id:   1, group: 'Benesi', name: 'Benesi (Julia)', de: 'benesiDE' },
+    { id:   7, group: 'Benesi', name: 'Benesi Pwr2 Mandelbulb', de: 'benesiPwr2MandelbulbDE' },
+    /* Xenodreambuie */
+    { id:   2, group: 'Xenodreambuie', name: 'Xenodreambuie V2', de: 'xenodreambuieDE' },
+    { id:  59, group: 'Xenodreambuie', name: 'Xenodreambuie (V1)', de: 'xenodreambuieV1DE' },
+    { id:  77, group: 'Xenodreambuie', name: 'Xenodreambuie V3', de: 'xenodreambuieV3DE' },
+    /* Riemann */
+    { id:   3, group: 'Riemann', name: 'Riemann-Sphere Hobold (Multi)', de: 'riemannHoboldDE' },
+    { id:  60, group: 'Riemann', name: 'Riemann-Sphere Hobold (Power 4)', de: 'riemannHoboldPow4DE' },
+    { id:   5, group: 'Riemann', name: 'Riemann-Sphere Hobold (Power 8)', de: 'riemannHoboldPow8DE' },
+    /* Msltoe */
+    { id:   4, group: 'Msltoe', name: 'Msltoe Toroidal V2', de: 'msltoeToroidalDE' },
+    { id:  67, group: 'Msltoe', name: 'Msltoe - Toroidal Bulb', de: 'msltoeV1DE' },
+    { id:  68, group: 'Msltoe', name: 'Msltoe - Sym2 Mod', de: 'msltoeSym2DE' },
+    { id:  69, group: 'Msltoe', name: 'Msltoe - Sym3 Mod', de: 'msltoeSym3DE' },
+    { id:  70, group: 'Msltoe', name: 'Msltoe - Sym3 Mod2', de: 'msltoeSym3V2DE' },
+    { id:  71, group: 'Msltoe', name: 'Msltoe - Sym4 Mod', de: 'msltoeSym4DE' },
+    /* Aexion */
+    { id:  62, group: 'Aexion', name: 'Aexion', de: 'aexionDE' },
+    { id:   6, group: 'Aexion', name: 'Aexion4D_V2 (Quadray)', de: 'aexion4dDE' },
+    /* Bristorbrot */
+    { id:  61, group: 'Bristorbrot', name: 'Bristorbrot (3D)', de: 'bristorbrotDE' },
+    { id:   8, group: 'Bristorbrot', name: 'Bristorbrot 4D', de: 'bristorbrot4dDE' },
+    /* Quaternion */
+    { id:  72, group: 'Quaternion', name: 'Quaternion', de: 'quaternionDE' },
+    { id:  73, group: 'Quaternion', name: 'Quaternion3D', de: 'quaternion3dDE' },
+    { id:  74, group: 'Quaternion', name: 'Quaternion 4D', de: 'quaternion4dDE' },
+    { id:  75, group: 'Quaternion', name: 'Hypercomplex', de: 'hypercomplexDE' },
+    { id:  76, group: 'Quaternion', name: 'Hypercomplex V2', de: 'hypercomplexV2DE' },
+    /* Abox */
+    { id:   9, group: 'Abox', name: 'Abox Mod11 (Mandelbox)', de: 'aboxMod11DE' },
+    { id:  63, group: 'Abox', name: 'Abox - Mod 1', de: 'aboxMod1DE' },
+    { id:  64, group: 'Abox', name: 'Abox - Mod 2', de: 'aboxMod2DE' },
+    { id:  65, group: 'Abox', name: 'Abox - Mod1 (MB3D)', de: 'aboxMB3D1DE' },
+    { id:  66, group: 'Abox', name: 'Abox 4D', de: 'abox4dDE' },
+    /* Amazing Surf */
+    { id:  78, group: 'Amazing Surf', name: 'Amazing Surf', de: 'amazingSurfDE' },
+    { id:  79, group: 'Amazing Surf', name: 'Amazing Surf - M3D', de: 'amazingSurfM3dDE' },
+    /* Sierpinski */
+    { id:  10, group: 'Sierpinski', name: 'Sierpinski 3D', de: 'sierpinski3dDE' },
+    { id:  11, group: 'Sierpinski', name: 'Sierpinski 3D V2', de: 'sierpinski3dV2DE' },
+    { id:  12, group: 'Sierpinski', name: 'Sierpinski 3D V3', de: 'sierpinski3dV3DE' },
+    { id:  13, group: 'Sierpinski', name: 'Sierpinski 3D V4', de: 'sierpinski3dV4DE' },
+    { id:  14, group: 'Sierpinski', name: 'Sierpinski 4D', de: 'sierpinski4dDE' },
+    /* Kleinian */
+    { id:  15, group: 'Kleinian', name: 'Pseudo Kleinian stdDE', de: 'kleinianStdDEDE' },
+    { id:  16, group: 'Kleinian', name: 'Pseudo Kleinian', de: 'kleinianPseudoDE' },
+    { id:  17, group: 'Kleinian', name: 'Pseudo Kleinian Mod 1', de: 'kleinianMod1DE' },
+    { id:  18, group: 'Kleinian', name: 'Pseudo Kleinian Mod 2', de: 'kleinianMod2DE' },
+    { id:  19, group: 'Kleinian', name: 'Pseudo Kleinian Mod 3', de: 'kleinianMod3DE' },
+    { id:  20, group: 'Kleinian', name: 'Pseudo Kleinian Mod 4', de: 'kleinianMod4DE' },
+    { id:  21, group: 'Kleinian', name: 'Pseudo Kleinian Mod 5', de: 'kleinianMod5DE' },
+    { id:  22, group: 'Kleinian', name: 'Pseudo Kleinian Mod 6', de: 'kleinianMod6DE' },
+    { id:  23, group: 'Kleinian', name: 'Pseudo Kleinian Mod 7', de: 'kleinianMod7DE' },
+    { id:  24, group: 'Kleinian', name: 'Pseudo Kleinian 4D', de: 'kleinian4dDE' },
+    { id:  25, group: 'Kleinian', name: 'Pseudo Kleinian Trig', de: 'kleinianTrigDE' },
+    { id:  26, group: 'Kleinian', name: 'Pseudo Kleinian Trig V2', de: 'kleinianTrigV2DE' },
+    { id:  27, group: 'Kleinian', name: 'Pseudo Kleinian Trig V3', de: 'kleinianTrigV3DE' },
+    { id:  28, group: 'Kleinian', name: 'JosLeys Kleinian', de: 'josKleinianDE' },
+    { id:  29, group: 'Kleinian', name: 'JosLeys Kleinian V2', de: 'josKleinianV2DE' },
+    { id:  30, group: 'Kleinian', name: 'JosLeys Kleinian V3', de: 'josKleinianV3DE' },
+    { id:  31, group: 'Kleinian', name: 'JosLeys Kleinian V4', de: 'josKleinianV4DE' },
+    /* Menger */
+    { id:  32, group: 'Menger', name: 'Menger3', de: 'menger3DE' },
+    { id:  33, group: 'Menger', name: 'Menger3 - M3D', de: 'menger3M3dDE' },
+    { id:  34, group: 'Menger', name: 'Menger 4D', de: 'menger4dDE' },
+    { id:  35, group: 'Menger', name: 'Menger 4D Mod1', de: 'menger4dDE' }, /* identical to 34 */
+    { id:  36, group: 'Menger', name: 'Menger 4D Mod2', de: 'menger4dMod2DE' },
+    { id:  37, group: 'Menger', name: 'Menger - Chebyshev', de: 'mengerChebyshevDE' },
+    { id:  38, group: 'Menger', name: 'Menger - Cross KIFS', de: 'mengerCrossKifsDE' },
+    { id:  39, group: 'Menger', name: 'Menger - Cross Mod1', de: 'mengerCrossMod1DE' },
+    { id:  40, group: 'Menger', name: 'Menger - Middle Mod', de: 'mengerMiddleModDE' },
+    { id:  41, group: 'Menger', name: 'Menger - Mod 1', de: 'mengerMod1DE' },
+    { id:  42, group: 'Menger', name: 'Menger - Octo', de: 'mengerOctoDE' },
+    { id:  43, group: 'Menger', name: 'Menger - Poly Fold', de: 'mengerPolyFoldDE' },
+    { id:  44, group: 'Menger', name: 'Menger - Prism Shape', de: 'mengerPrismShapeDE' },
+    { id:  45, group: 'Menger', name: 'Menger - Prism Shape2', de: 'mengerPrismShape2DE' },
+    { id:  46, group: 'Menger', name: 'Menger - Pwr2 Polynomial', de: 'mengerPwr2PolyDE' },
+    { id:  47, group: 'Menger', name: 'Menger - Pyramid', de: 'mengerPyramidDE' },
+    { id:  48, group: 'Menger', name: 'Menger - Smooth', de: 'mengerSmoothDE' },
+    { id:  49, group: 'Menger', name: 'Menger - Smooth Chebyshev', de: 'mengerSmoothChebyshevDE' },
+    { id:  50, group: 'Menger', name: 'Menger - Smooth Mod1', de: 'mengerSmoothMod1DE' },
+    { id:  51, group: 'Menger', name: 'Menger sponge', de: 'mengerSpongeDE' },
+    { id:  52, group: 'Menger', name: 'Menger V2', de: 'mengerV2DE' },
+    { id:  53, group: 'Menger', name: 'Menger V3', de: 'mengerV3DE' },
+    { id:  54, group: 'Menger', name: 'Menger - V4', de: 'mengerV4DE' },
+    { id:  55, group: 'Menger', name: 'Menger - V5', de: 'mengerV5DE' },
+    { id:  56, group: 'Menger', name: 'Menger V6', de: 'mengerV6DE' },
+    { id:  57, group: 'Menger', name: 'Menger V7', de: 'mengerV7DE' },
+  ];
+
+  const FRACTAL_BY_ID = new Map();
+  const FRACTAL_INDEX_BY_ID = new Map();
+  FRACTALS.forEach((f, i) => {
+    if (FRACTAL_BY_ID.has(f.id)) throw new Error('Duplicate fractal id: ' + f.id);
+    FRACTAL_BY_ID.set(f.id, f);
+    FRACTAL_INDEX_BY_ID.set(f.id, i);
+  });
+
+  /* Two variants are exact DE duplicates; share their compiled program to
+     avoid a redundant shader compile. */
+  const PROGRAM_ALIAS = { 35: 34, 112: 111 };
+
+  /* Build the picker from the registry so the options can never drift
+     from the DE mapping. Groups must be contiguous in the list. */
+  (function buildFractalSelect() {
+    let groupEl = null, groupName = null;
+    for (const f of FRACTALS) {
+      if (f.group !== groupName) {
+        groupName = f.group;
+        groupEl = document.createElement('optgroup');
+        groupEl.label = groupName;
+        selectEl.appendChild(groupEl);
+      }
+      const option = document.createElement('option');
+      option.value = String(f.id);
+      option.textContent = f.name;
+      groupEl.appendChild(option);
+    }
+  })();
+
+  /* ------------------------------------------------------------------
      VERTEX + FRAGMENT SHADERS
      ------------------------------------------------------------------ */
 
@@ -516,8 +556,12 @@ uniform vec3  u_forward, u_right, u_up;
 uniform vec3  u_roObj, u_lightDir;
 uniform float u_cc;
 uniform float u_boundR;
+uniform int   u_skipShadows; /* 1 while interactive: skip the shadow march */
 uniform mat3  u_rotMat;
 uniform float u_power;
+/* CPU-hoisted IQv2 power shortcuts: fast8 = trig-free power 8, fastPower =
+   trig-free powers 3/5/6, mode = 2/3/4/5/6/8. */
+uniform int   u_iq_fast8, u_iq_fastPower, u_iq_powerMode;
 uniform float u_wo_scale, u_wi_scale, u_zz_scale;
 uniform float u_eps;
 uniform float u_stepScale;
@@ -525,12 +569,8 @@ uniform float u_trapOffset, u_trapScale;
 uniform int   u_max_iter, u_max_steps;
 uniform float u_bailout;
 uniform float u_bailout2;
-uniform int   u_shadowsEnabled;
-uniform int   u_wireframeEnabled;
-uniform int   u_palette;
 uniform vec3  u_palA, u_palB, u_palC, u_palD;
 uniform float u_colorShift;
-uniform int   u_fractal;   /* used only by the raw FRAG_SHADER fallback sceneDE */
 
 uniform vec3  u_offset;
 uniform float u_mb_alpha, u_mb_beta, u_mb_absA, u_mb_absB, u_mb_gamma;
@@ -701,18 +741,65 @@ vec3 rot3D(vec3 v, float aDeg, float bDeg, float gDeg) {
     return M * v;
 }
 
+/* Trig-free integer-power Mandelbulb map for p = 3, 5, 6 (wo/wi scale = 1).
+   Uses Chebyshev polynomials of the normalized polar/azimuthal angles. */
+vec3 mandelbulbPolyPower(vec3 z, float r_safe, int p, out float rp, out float wr) {
+    float rho = sqrt(z.x * z.x + z.y * z.y);
+    float cth = z.z / r_safe;
+    float sth = rho / r_safe;
+    float cph, sph;
+    if (abs(z.x) + abs(z.y) > 1e-7) {
+        cph = z.y / rho;
+        sph = z.x / rho;
+    } else {
+        cph = 1.0;
+        sph = 0.0;
+    }
+    float r2 = r_safe * r_safe;
+    float r4 = r2 * r2;
+    float cosp, sinp, cosph, sinph;
+    if (p == 3) {
+        float c2 = cth * cth;
+        cosp = cth * (4.0 * c2 - 3.0);
+        sinp = sth * (4.0 * c2 - 1.0);
+        float q2 = cph * cph;
+        cosph = cph * (4.0 * q2 - 3.0);
+        sinph = sph * (4.0 * q2 - 1.0);
+        rp = r2; wr = r2 * r_safe;
+    } else if (p == 5) {
+        float c2 = cth * cth;
+        cosp = cth * (16.0 * c2 * c2 - 20.0 * c2 + 5.0);
+        sinp = sth * (16.0 * c2 * c2 - 12.0 * c2 + 1.0);
+        float q2 = cph * cph;
+        cosph = cph * (16.0 * q2 * q2 - 20.0 * q2 + 5.0);
+        sinph = sph * (16.0 * q2 * q2 - 12.0 * q2 + 1.0);
+        rp = r4; wr = r4 * r_safe;
+    } else {
+        /* p == 6 */
+        float c2 = cth * cth;
+        cosp = 32.0 * c2 * c2 * c2 - 48.0 * c2 * c2 + 18.0 * c2 - 1.0;
+        sinp = sth * cth * (32.0 * c2 * c2 - 32.0 * c2 + 6.0);
+        float q2 = cph * cph;
+        cosph = 32.0 * q2 * q2 * q2 - 48.0 * q2 * q2 + 18.0 * q2 - 1.0;
+        sinph = sph * cph * (32.0 * q2 * q2 - 32.0 * q2 + 6.0);
+        rp = r4 * r_safe; wr = r4 * r2;
+    }
+    return vec3(wr * sinp * sinph, wr * sinp * cosph, wr * cosp);
+}
+
 /* ===================== IQv2 DE ===================== */
 float mandelbulbIqV2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    /* Power shortcuts are decided once on the CPU; the hot loop only reads
+       the precomputed uniforms. */
+    bool fast8 = u_iq_fast8 != 0;
+    bool fastPower = u_iq_fastPower != 0;
+    int powerMode = u_iq_powerMode;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
         trap = min(trap, r_safe);
-        bool fast8 = abs(u_power - 8.0) < 1e-5 &&
-                     abs(u_wo_scale - 1.0) < 1e-5 &&
-                     abs(u_wi_scale - 1.0) < 1e-5;
         if (fast8) {
             /* Trig-free power-8 polynomial (matches IQv2's x/y angle order). */
             vec3 z2 = z * z;
@@ -736,17 +823,32 @@ float mandelbulbIqV2DE(vec3 pos, out float trap) {
             float r4 = r2 * r2;
             float rp = r4 * r2 * r_safe;
             dr = rp * dr * 8.0 + 1.0;
+        } else if (fastPower) {
+            float rp, wr;
+            z = mandelbulbPolyPower(z, r_safe, powerMode, rp, wr);
+            dr = rp * dr * float(powerMode) + 1.0;
         } else {
             float wi = (abs(z.x) + abs(z.y) > 1e-7) ? atan(z.x, z.y) : 0.0;
             float wo = acos(clamp(z.z / r_safe, -1.0, 1.0));
             float rp, wr;
-            if (abs(u_power - 2.0) < 1e-5) {
+            if (powerMode == 2) {
                 rp = r_safe; wr = r_safe * r_safe;
-            } else if (abs(u_power - 4.0) < 1e-5) {
+            } else if (powerMode == 3) {
+                float r2 = r_safe * r_safe;
+                rp = r2; wr = r2 * r_safe;
+            } else if (powerMode == 4) {
                 float r2 = r_safe * r_safe;
                 rp = r2 * r_safe;
                 wr = r2 * r2;
-            } else if (abs(u_power - 8.0) < 1e-5) {
+            } else if (powerMode == 5) {
+                float r2 = r_safe * r_safe;
+                float r4 = r2 * r2;
+                rp = r4; wr = r4 * r_safe;
+            } else if (powerMode == 6) {
+                float r2 = r_safe * r_safe;
+                float r4 = r2 * r2;
+                rp = r4 * r_safe; wr = r4 * r2;
+            } else if (powerMode == 8) {
                 float r2 = r_safe * r_safe;
                 float r4 = r2 * r2;
                 rp = r4 * r2 * r_safe;
@@ -778,8 +880,7 @@ float mandelbulbIqPow8DE(vec3 pos, out float trap) {
     float dr = 1.0;
     float r = length(z);
     trap = max(r, 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -816,8 +917,7 @@ float mandelbulbIqPow8DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb base ===================== */
 float mandelbulbDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -841,8 +941,7 @@ float mandelbulbDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb2 ===================== */
 float mandelbulb2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -879,8 +978,7 @@ float mandelbulb2DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb3 ===================== */
 float mandelbulb3DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -912,8 +1010,7 @@ float mandelbulb3DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Power2 ===================== */
 float mandelbulbPower2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -933,8 +1030,7 @@ float mandelbulbPower2DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Abs ===================== */
 float mandelbulbAbsDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -960,8 +1056,7 @@ float mandelbulbAbsDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb4 ===================== */
 float mandelbulb4DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1003,8 +1098,7 @@ float mandelbulb4DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Abs Power2 ===================== */
 float mandelbulbAbsPower2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -1032,8 +1126,7 @@ float mandelbulbAbsPower2DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Atan2 Power2 ===================== */
 float mandelbulbAtan2Power2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -1064,8 +1157,7 @@ float mandelbulbAtan2Power2DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Bermarte ===================== */
 float mandelbulbBermarteDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1106,8 +1198,7 @@ float mandelbulbBermarteDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Eye ===================== */
 float mandelbulbEyeDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -1140,8 +1231,7 @@ float mandelbulbEyeDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Juliabulb ===================== */
 float mandelbulbJuliabulbDE(vec3 pos, out float trap) {
     vec3 z = pos; vec3 c = u_offset; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1162,8 +1252,7 @@ float mandelbulbJuliabulbDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Kali ===================== */
 float mandelbulbKaliDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1192,8 +1281,7 @@ float mandelbulbKaliDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Kali Multi ===================== */
 float mandelbulbKaliMultiDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1220,8 +1308,7 @@ float mandelbulbKaliMultiDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Kosalos ===================== */
 float mandelbulbKosalosDE(vec3 pos, out float trap) {
     vec3 z = pos; vec3 cTrack = vec3(0.001); float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1248,8 +1335,7 @@ float mandelbulbKosalosDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Kosalos V2 ===================== */
 float mandelbulbKosalosV2DE(vec3 pos, out float trap) {
     vec3 z = pos; vec3 cTrack = vec3(0.001); float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1276,8 +1362,7 @@ float mandelbulbKosalosV2DE(vec3 pos, out float trap) {
 float mandelbulbLambdaDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
     vec3 lc = u_mb_lc;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1305,8 +1390,7 @@ float mandelbulbLambdaDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Multi ===================== */
 float mandelbulbMultiDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1327,8 +1411,7 @@ float mandelbulbMultiDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Multi2 ===================== */
 float mandelbulbMulti2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1349,8 +1432,7 @@ float mandelbulbMulti2DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Plus Z ===================== */
 float mandelbulbPlusZDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1372,8 +1454,7 @@ float mandelbulbPlusZDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Pow2 V1 ===================== */
 float mandelbulbPow2V1DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -1401,8 +1482,7 @@ float mandelbulbPow2V1DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Pow2 V2 ===================== */
 float mandelbulbPow2V2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -1428,8 +1508,7 @@ float mandelbulbPow2V2DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Pow2 V3 ===================== */
 float mandelbulbPow2V3DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -1456,8 +1535,7 @@ float mandelbulbPow2V3DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Pow2 V4 ===================== */
 float mandelbulbPow2V4DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1486,8 +1564,7 @@ float mandelbulbPow2V4DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Power1234 ===================== */
 float mandelbulbPower1234DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1532,8 +1609,7 @@ float mandelbulbPower1234DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Pupuku ===================== */
 float mandelbulbPupukuDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1553,8 +1629,7 @@ float mandelbulbPupukuDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Quadrat ===================== */
 float mandelbulbQuadratDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -1581,8 +1656,7 @@ float mandelbulbQuadratDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Quat ===================== */
 float mandelbulbQuatDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -1615,8 +1689,7 @@ float mandelbulbQuatDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Sin Cos ===================== */
 float mandelbulbSinCosDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1640,8 +1713,7 @@ float mandelbulbSinCosDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Sin Cos V2 ===================== */
 float mandelbulbSinCosV2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1665,8 +1737,7 @@ float mandelbulbSinCosV2DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Sin Cos V3 ===================== */
 float mandelbulbSinCosV3DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1690,8 +1761,7 @@ float mandelbulbSinCosV3DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Sin Cos V4 ===================== */
 float mandelbulbSinCosV4DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1715,8 +1785,7 @@ float mandelbulbSinCosV4DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Tails ===================== */
 float mandelbulbTailsDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1745,8 +1814,7 @@ float mandelbulbTailsDE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Tails V2 ===================== */
 float mandelbulbTailsV2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1775,8 +1843,7 @@ float mandelbulbTailsV2DE(vec3 pos, out float trap) {
 /* ===================== Mandelbulb Vary Power V1 ===================== */
 float mandelbulbVaryPowerDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1798,8 +1865,7 @@ float mandelbulbVaryPowerDE(vec3 pos, out float trap) {
 /* ===================== Benesi ===================== */
 float benesiDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1823,8 +1889,7 @@ float benesiDE(vec3 pos, out float trap) {
 /* ===================== Xenodreambuie ===================== */
 float xenodreambuieDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1850,8 +1915,7 @@ float xenodreambuieDE(vec3 pos, out float trap) {
 /* ===================== Xenodreambuie V1 ===================== */
 float xenodreambuieV1DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1882,8 +1946,7 @@ float xenodreambuieV1DE(vec3 pos, out float trap) {
 /* ===================== Xenodreambuie V3 ===================== */
 float xenodreambuieV3DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1914,8 +1977,7 @@ float xenodreambuieV3DE(vec3 pos, out float trap) {
 /* ===================== Riemann-Multi ===================== */
 float riemannHoboldDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -1996,8 +2058,7 @@ float riemannHoboldDE(vec3 pos, out float trap) {
 /* ===================== Riemann-Pow8 ===================== */
 float riemannHoboldPow8DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -2057,8 +2118,7 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
 /* ===================== Riemann-Pow4 ===================== */
 float riemannHoboldPow4DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -2118,8 +2178,7 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
 /* ===================== Msltoe Toroidal ===================== */
 float msltoeToroidalDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r_cur = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r0 = length(z);
         if (r0 > u_bailout) break;
         float r_safe = max(r0, 1e-6);
@@ -2176,8 +2235,7 @@ float msltoeV1DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2212,8 +2270,7 @@ float msltoeSym2DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2240,8 +2297,7 @@ float msltoeSym3DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2269,8 +2325,7 @@ float msltoeSym3V2DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2301,8 +2356,7 @@ float msltoeSym4DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2332,8 +2386,7 @@ float quaternionDE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2351,8 +2404,7 @@ float quaternion3dDE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2375,8 +2427,7 @@ float quaternion4dDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2397,8 +2448,7 @@ float hypercomplexDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2421,8 +2471,7 @@ float hypercomplexV2DE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2483,8 +2532,7 @@ float aexion4dDE(vec3 pos, out float trap) {
         z = q0 + constC;
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         float r_cur = length(z);
         trapv = min(trapv, max(r_cur, 1e-6));
         dr = dr * 2.0 * r_cur + 1.0;
@@ -2523,8 +2571,7 @@ float aexionDE(vec3 pos, out float trap) {
             escaped = dot(z, z) > u_bailout2;
         }
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         float r_cur = length(z);
         if (r_cur > u_bailout) break;
         trapv = min(trapv, max(r_cur, 1e-6));
@@ -2545,8 +2592,7 @@ float benesiPwr2MandelbulbDE(vec3 pos, out float trap) {
     float r = length(pos);
     float trapv = 1e10;
 
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float zl = length(z);
         if (zl > u_bailout) break;
         trapv = min(trapv, max(zl, 1e-6));
@@ -2652,8 +2698,7 @@ float benesiPwr2MandelbulbDE(vec3 pos, out float trap) {
 /* ===================== Bristorbrot 3D ===================== */
 float bristorbrotDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         r = length(z);
         if (r > u_bailout) break;
         float r_safe = max(r, 1e-6);
@@ -2675,8 +2720,7 @@ float bristorbrot4dDE(vec3 pos, out float trap) {
     float dr = 1.0;
     float trapv = 1e10;
 
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r = length(z);
         if (r > u_bailout) break;
         trapv = min(trapv, max(r, 1e-6));
@@ -2708,8 +2752,7 @@ float aboxMod11DE(vec3 pos, out float trap) {
 
     trap2 = dot(z, z);
 
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* DarkBeam's scale vary */
@@ -2803,8 +2846,7 @@ float aboxMod1DE(vec3 pos, out float trap) {
     float dr = 1.0;
     float actualScale = u_ab_scale;
     float trap2 = dot(z, z);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         if (dot(z, z) > u_bailout2) break;
         trap2 = min(trap2, dot(z, z));
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
@@ -2840,8 +2882,7 @@ float aboxMod2DE(vec3 pos, out float trap) {
     float dr = 1.0;
     float actualScale = u_ab_scale;
     float trap2 = dot(z, z);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         if (dot(z, z) > u_bailout2) break;
         trap2 = min(trap2, dot(z, z));
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
@@ -2878,8 +2919,7 @@ float aboxMB3D1DE(vec3 pos, out float trap) {
     float dr = 1.0;
     float actualScale = u_ab_scale;
     float trap2 = dot(z, z);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         if (dot(z, z) > u_bailout2) break;
         trap2 = min(trap2, dot(z, z));
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
@@ -2914,8 +2954,7 @@ float abox4dDE(vec3 pos, out float trap) {
     float actualScale = u_ab_scale;
     float trap2 = dot(z, z);
     vec4 off1111 = vec4(u_ab_add111, 1.0);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         if (dot(z, z) > u_bailout2) break;
         trap2 = min(trap2, dot(z, z));
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
@@ -2945,8 +2984,7 @@ float amazingSurfDE(vec3 pos, out float trap) {
     float dr = 1.0;
     float actualScale = u_as_scale;
     float trap2 = dot(z, z);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r2 = dot(z, z);
         if (r2 > u_bailout2) break;
         trap2 = min(trap2, r2);
@@ -2975,8 +3013,7 @@ float amazingSurfM3dDE(vec3 pos, out float trap) {
     float dr = 1.0;
     float actualScale = u_as_scale;
     float trap2 = dot(z, z);
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         float r2 = dot(z, z);
         if (r2 > u_bailout2) break;
         trap2 = min(trap2, r2);
@@ -3007,8 +3044,7 @@ float sierpinski3dDE(vec3 pos, out float trap) {
     float dr = 1.0;
     float trap2 = 1e20;
 
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* Normal full tetra-fold (B) */
@@ -3064,8 +3100,7 @@ float sierpinski3dV2DE(vec3 pos, out float trap) {
     float dr = 1.0;
     float trap2 = 1e20;
 
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* Pre-transform T: offset 000 + rotation 2 */
@@ -3146,8 +3181,7 @@ float sierpinski3dV3DE(vec3 pos, out float trap) {
     float dr = 1.0;
     float trap2 = 1e20;
 
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* Pre-transform T */
@@ -3195,8 +3229,7 @@ float sierpinski3dV4DE(vec3 pos, out float trap) {
     float dr = 1.0;
     float trap2 = 1e20;
 
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* Sphere inversion (D) */
@@ -3262,8 +3295,7 @@ float sierpinski4dDE(vec3 pos, out float trap) {
     float dr = 1.0;
     float trap2 = 1e20;
 
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* Six plane folds (normal tetrahedron in 4D), branchless. */
@@ -3362,8 +3394,7 @@ void kPseudoCore(inout vec3 z, inout float dr, bool useScaleB1, bool addTweak) {
 
 float kleinianStdDEDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* tetrahedral M-fold (transf_function_enabled, default on) */
@@ -3389,8 +3420,7 @@ float kleinianStdDEDE(vec3 pos, out float trap) {
 
 float kleinianPseudoDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         kPseudoCore(z, dr, false, true);
@@ -3404,8 +3434,7 @@ float kleinianPseudoDE(vec3 pos, out float trap) {
 
 float kleinianMod1DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         kPseudoCore(z, dr, true, true);
@@ -3419,8 +3448,7 @@ float kleinianMod1DE(vec3 pos, out float trap) {
 
 float kleinianMod2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         kPseudoCore(z, dr, false, true);
@@ -3434,8 +3462,7 @@ float kleinianMod2DE(vec3 pos, out float trap) {
 
 float kleinianMod3DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* box offset (constantMultiplier000 defaults to 0, so no-op) */
@@ -3456,8 +3483,7 @@ float kleinianMod3DE(vec3 pos, out float trap) {
 
 float kleinianMod4DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z + u_k_csize) - abs(z - u_k_csize) - z;
@@ -3474,8 +3500,7 @@ float kleinianMod4DE(vec3 pos, out float trap) {
 
 float kleinianMod5DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* unconditional H-block modular wrap (functionEnabledCx/Cy/Cz) */
@@ -3503,8 +3528,7 @@ float kleinianMod5DE(vec3 pos, out float trap) {
 
 float kleinianMod6DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* Dk and the custom DE are recomputed for every outer iteration
@@ -3535,8 +3559,7 @@ float kleinianMod6DE(vec3 pos, out float trap) {
 
 float kleinianMod7DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z + u_k_box) - abs(z - u_k_box) - z;
@@ -3569,8 +3592,7 @@ float kleinianMod7DE(vec3 pos, out float trap) {
 
 float kleinian4dDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z + u_k_off1111) - abs(z - u_k_off1111) - z;
@@ -3605,8 +3627,7 @@ void kTrigTransform(vec3 zin, out vec3 zout, out float cx, out float cy, out flo
 
 float kleinianTrigDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float temp1000 = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         /* fold: z -= offsetA000 (defaults to 0) */
@@ -3635,8 +3656,7 @@ float kleinianTrigDE(vec3 pos, out float trap) {
 
 float kleinianTrigV2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z -= u_k_offsetA000;
@@ -3672,8 +3692,7 @@ float kleinianTrigV2DE(vec3 pos, out float trap) {
 
 float kleinianTrigV3DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float de0 = 0.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z -= u_k_offsetA000;
@@ -3712,8 +3731,7 @@ float josPKDistance(vec3 z, float dr) {
 
 float josKleinianDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         vec3 boxSize = u_k_box;
@@ -3743,8 +3761,7 @@ float josKleinianDE(vec3 pos, out float trap) {
 float josKleinianV2DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
     float c = u_k_offsetA0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         vec3 boxSize = u_k_box;
@@ -3777,8 +3794,7 @@ float josKleinianV2DE(vec3 pos, out float trap) {
 
 float josKleinianV3DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         vec3 boxSize = u_k_box;
@@ -3822,8 +3838,7 @@ float josKleinianV3DE(vec3 pos, out float trap) {
 
 float josKleinianV4DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         vec3 boxSize = u_k_box;
@@ -3934,8 +3949,7 @@ void mengerCheb(inout vec3 z, inout float dr) {
 
 float menger3DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
         z = mengerStdFold(z, dr);
         if (dot(z, z) > u_bailout2) break;
@@ -3946,8 +3960,7 @@ float menger3DE(vec3 pos, out float trap) {
 
 float menger3M3dDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
@@ -3969,8 +3982,7 @@ float menger3M3dDE(vec3 pos, out float trap) {
 
 float menger4dDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
@@ -3994,8 +4006,7 @@ float menger4dDE(vec3 pos, out float trap) {
 
 float menger4dMod1DE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
@@ -4019,8 +4030,7 @@ float menger4dMod1DE(vec3 pos, out float trap) {
 
 float menger4dMod2DE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
@@ -4057,8 +4067,7 @@ float mengerChebyshevDE(vec3 pos, out float trap) {
         if (z.z < -1.0) z.z += 2.0;
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         trap2 = min(trap2, dot(z, z));
         z = abs(z);
         z = mengerSort3(z);
@@ -4073,8 +4082,7 @@ float mengerChebyshevDE(vec3 pos, out float trap) {
 
 float mengerCrossKifsDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z.y = abs(z.y);
@@ -4142,8 +4150,7 @@ float mengerCrossMod1DE(vec3 pos, out float trap) {
         z.x += SQRT_3_4;
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         trap2 = min(trap2, dot(z, z));
         z.y = abs(z.y);
         z.z = abs(z.z);
@@ -4172,8 +4179,7 @@ float mengerCrossMod1DE(vec3 pos, out float trap) {
 
 float mengerMiddleModDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
@@ -4192,8 +4198,7 @@ float mengerMiddleModDE(vec3 pos, out float trap) {
 
 float mengerMod1DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
         z = mengerSpongeFold(z, dr, u_m_cmult111);
         if (dot(z, z) > u_bailout2) break;
@@ -4204,8 +4209,7 @@ float mengerMod1DE(vec3 pos, out float trap) {
 
 float mengerOctoDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         if (z.x + z.y < 0.0) z = vec3(-z.y, -z.x, z.z);
@@ -4238,8 +4242,7 @@ float mengerPolyFoldDE(vec3 pos, out float trap) {
         dr = dr * u_m_anDEscale + u_m_anDEoff0;
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         trap2 = min(trap2, dot(z, z));
         z = mengerSpongeFold(z, dr, u_m_cmultA111);
         dr = dr * u_m_anDEscale + u_m_anDEoff0;
@@ -4269,8 +4272,7 @@ float mengerPrismShapeDE(vec3 pos, out float trap) {
         z = mengerSpongeFold(z, dr, u_m_cmultA111);
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         trap2 = min(trap2, dot(z, z));
         z = mengerSpongeFold(z, dr, u_m_cmultA111);
         if (dot(z, z) > u_bailout2) break;
@@ -4296,8 +4298,7 @@ float mengerPrismShape2DE(vec3 pos, out float trap) {
         z = mengerSpongeFold(z, dr, u_m_cmultA111);
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         trap2 = min(trap2, dot(z, z));
         z = mengerSpongeFold(z, dr, u_m_cmultA111);
         if (dot(z, z) > u_bailout2) break;
@@ -4322,8 +4323,7 @@ float mengerPwr2PolyDE(vec3 pos, out float trap) {
         }
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         trap2 = min(trap2, dot(z, z));
         for (int k = 0; k < 32; k++) {
             if (k >= u_m_int1) break;
@@ -4352,8 +4352,7 @@ float mengerPyramidDE(vec3 pos, out float trap) {
         }
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         trap2 = min(trap2, dot(z, z));
         for (int k = 0; k < 32; k++) {
             if (k >= u_m_int1) break;
@@ -4367,8 +4366,7 @@ float mengerPyramidDE(vec3 pos, out float trap) {
 
 float mengerSmoothDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         float offS = 0.005;
@@ -4432,8 +4430,7 @@ float mengerSmoothChebyshevDE(vec3 pos, out float trap) {
         dr *= u_m_scale3;
         escaped = dot(z, z) > u_bailout2;
     }
-    for (int i = 1; i < 32 && !escaped; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 1; i < u_max_iter && !escaped; i++) {
         trap2 = min(trap2, dot(z, z));
         z = abs(z);
         float offS = 0.005;
@@ -4465,8 +4462,7 @@ float mengerSmoothChebyshevDE(vec3 pos, out float trap) {
 
 float mengerSmoothMod1DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
@@ -4500,8 +4496,7 @@ float mengerSmoothMod1DE(vec3 pos, out float trap) {
 
 float mengerSpongeDE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
         z = abs(z);
         z = mengerSort3(z);
@@ -4570,8 +4565,7 @@ float mengerV3DE(vec3 pos, out float trap) {
 
 float mengerV4DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
@@ -4603,8 +4597,7 @@ float mengerV4DE(vec3 pos, out float trap) {
 
 float mengerV5DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z = abs(z);
@@ -4668,8 +4661,7 @@ float mengerV6DE(vec3 pos, out float trap) {
 
 float mengerV7DE(vec3 pos, out float trap) {
     vec3 z = pos; float dr = 1.0; float trap2 = 1e20; float dist = 1000.0;
-    for (int i = 0; i < 32; i++) {
-        if (i >= u_max_iter) break;
+    for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, dot(z, z));
 
         z *= 1.5;
@@ -4703,84 +4695,21 @@ float mengerV7DE(vec3 pos, out float trap) {
 }
 
 /* ===================== Scene dispatcher ===================== */
+/* buildFragmentSource() replaces this body with a wrapper around exactly one
+   fractal DE. The template is never compiled as-is; it only marks the
+   insertion point between the DE library and the shading code. */
 float sceneDE(vec3 p, out float trap) {
-    if (u_fractal == 1) return benesiDE(p, trap);
-    if (u_fractal == 2) return xenodreambuieDE(p, trap);
-    if (u_fractal == 3) return riemannHoboldDE(p, trap);
-    if (u_fractal == 4) return msltoeToroidalDE(p, trap);
-    if (u_fractal == 5) return riemannHoboldPow8DE(p, trap);
-    if (u_fractal == 6) return aexion4dDE(p, trap);
-    if (u_fractal == 7) return benesiPwr2MandelbulbDE(p, trap);
-    if (u_fractal == 8) return bristorbrot4dDE(p, trap);
-    if (u_fractal == 9) return aboxMod11DE(p, trap);
-    if (u_fractal == 10) return sierpinski3dDE(p, trap);
-    if (u_fractal == 11) return sierpinski3dV2DE(p, trap);
-    if (u_fractal == 12) return sierpinski3dV3DE(p, trap);
-    if (u_fractal == 13) return sierpinski3dV4DE(p, trap);
-    if (u_fractal == 14) return sierpinski4dDE(p, trap);
-    if (u_fractal == 15) return kleinianStdDEDE(p, trap);
-    if (u_fractal == 16) return kleinianPseudoDE(p, trap);
-    if (u_fractal == 17) return kleinianMod1DE(p, trap);
-    if (u_fractal == 18) return kleinianMod2DE(p, trap);
-    if (u_fractal == 19) return kleinianMod3DE(p, trap);
-    if (u_fractal == 20) return kleinianMod4DE(p, trap);
-    if (u_fractal == 21) return kleinianMod5DE(p, trap);
-    if (u_fractal == 22) return kleinianMod6DE(p, trap);
-    if (u_fractal == 23) return kleinianMod7DE(p, trap);
-    if (u_fractal == 24) return kleinian4dDE(p, trap);
-    if (u_fractal == 25) return kleinianTrigDE(p, trap);
-    if (u_fractal == 26) return kleinianTrigV2DE(p, trap);
-    if (u_fractal == 27) return kleinianTrigV3DE(p, trap);
-    if (u_fractal == 28) return josKleinianDE(p, trap);
-    if (u_fractal == 29) return josKleinianV2DE(p, trap);
-    if (u_fractal == 30) return josKleinianV3DE(p, trap);
-    if (u_fractal == 31) return josKleinianV4DE(p, trap);
-    if (u_fractal == 32) return menger3DE(p, trap);
-    if (u_fractal == 33) return menger3M3dDE(p, trap);
-    if (u_fractal == 34) return menger4dDE(p, trap);
-    if (u_fractal == 35) return menger4dMod1DE(p, trap);
-    if (u_fractal == 36) return menger4dMod2DE(p, trap);
-    if (u_fractal == 37) return mengerChebyshevDE(p, trap);
-    if (u_fractal == 38) return mengerCrossKifsDE(p, trap);
-    if (u_fractal == 39) return mengerCrossMod1DE(p, trap);
-    if (u_fractal == 40) return mengerMiddleModDE(p, trap);
-    if (u_fractal == 41) return mengerMod1DE(p, trap);
-    if (u_fractal == 42) return mengerOctoDE(p, trap);
-    if (u_fractal == 43) return mengerPolyFoldDE(p, trap);
-    if (u_fractal == 44) return mengerPrismShapeDE(p, trap);
-    if (u_fractal == 45) return mengerPrismShape2DE(p, trap);
-    if (u_fractal == 46) return mengerPwr2PolyDE(p, trap);
-    if (u_fractal == 47) return mengerPyramidDE(p, trap);
-    if (u_fractal == 48) return mengerSmoothDE(p, trap);
-    if (u_fractal == 49) return mengerSmoothChebyshevDE(p, trap);
-    if (u_fractal == 50) return mengerSmoothMod1DE(p, trap);
-    if (u_fractal == 51) return mengerSpongeDE(p, trap);
-    if (u_fractal == 52) return mengerV2DE(p, trap);
-    if (u_fractal == 53) return mengerV3DE(p, trap);
-    if (u_fractal == 54) return mengerV4DE(p, trap);
-    if (u_fractal == 55) return mengerV5DE(p, trap);
-    if (u_fractal == 56) return mengerV6DE(p, trap);
-    if (u_fractal == 57) return mengerV7DE(p, trap);
     return mandelbulbIqV2DE(p, trap);
 }
 
-vec3 calcNormal(vec3 p, float eps) {
-    float h = max(eps * 0.75, 1e-5);
-    float dummy;
-    const vec2 k = vec2(1.0, -1.0);
-    return normalize(
-        k.xyy * sceneDE(p + k.xyy * h, dummy) +
-        k.yyx * sceneDE(p + k.yyx * h, dummy) +
-        k.yxy * sceneDE(p + k.yxy * h, dummy) +
-        k.xxx * sceneDE(p + k.xxx * h, dummy));
-}
-
 /* Shadow ray march: return 1.0 if unoccluded, 0.0 if the light is blocked.
-   Soft-shadow penumbra, capped at 2.0 world units for performance. */
+   Soft-shadow penumbra, capped at 16 steps / 1.0 world unit for performance. */
 #ifdef ENABLE_SHADOWS
+const int   SHADOW_MAX_STEPS = 16;
+const float SHADOW_MAX_T     = 1.0;
 float shadowMarch(vec3 startP, vec3 lightDir, float eps) {
     float t = max(0.02, eps * 4.0);
-    float tMax = 2.0;
+    float tMax = SHADOW_MAX_T;
     float b = dot(startP, lightDir);
     float c = dot(startP, startP) - u_boundR * u_boundR;
     float disc = b * b - c;
@@ -4790,7 +4719,7 @@ float shadowMarch(vec3 startP, vec3 lightDir, float eps) {
     }
     float res = 1.0;
     float dummy;
-    for (int i = 0; i < 24; i++) {
+    for (int i = 0; i < SHADOW_MAX_STEPS; i++) {
         vec3 q = startP + lightDir * t;
         float d = sceneDE(q, dummy);
         if (d < eps) return 0.0;
@@ -4817,8 +4746,15 @@ void main() {
     vec3 rd = u_rotMat * rdW;
     vec3 ro = u_roObj;
 
-    bool hitAny = false;
     vec3 col;
+
+    /* Hit state is hoisted so the derivative pair below can run in uniform
+       control flow for every pixel in the quad. */
+    vec3 p = ro;
+    bool hit = false;
+    float trap = 0.0;
+    int hitSteps = 0;
+    float eps = u_eps;
 
     float b = dot(ro, rd);
     float disc = b * b - u_cc;
@@ -4830,11 +4766,8 @@ void main() {
 
         float stepScale = u_stepScale;
         float pixEps = u_pixEps;
-        float eps = u_eps;
 
         if (tMax > t) {
-            bool hit = false; float trap = 0.0; int hitSteps = 0;
-            vec3 p;
             for (int i = 0; i < 2048; i++) {
                 if (i >= u_max_steps) break;
                 p = ro + rd * t;
@@ -4844,53 +4777,66 @@ void main() {
                 t += d * stepScale;
                 if (t > tMax) break;
             }
-            if (hit) {
-                vec3 n = calcNormal(p, eps);
-                vec3 lightDir = u_lightDir;
-                vec3 viewDir = -rd;
-                vec3 halfVec = normalize(lightDir + viewDir);
-
-                float ndl = dot(n, lightDir);
-                float diff = 0.0;
-                float spec = 0.0;
-                if (ndl > 0.0) {
-                    float shadowK = 1.0;
-#ifdef ENABLE_SHADOWS
-                    /* Offset slightly along the normal from the surface, then march
-                       toward the light to check occlusion. */
-                    shadowK = shadowMarch(p + n * eps * 4.0, lightDir, eps * 3.0);
-#endif
-                    diff = ndl * shadowK;
-                    float sp = max(dot(n, halfVec), 0.0);
-                    sp *= sp; sp *= sp; sp *= sp; sp *= sp; sp *= sp;
-                    spec = sp * shadowK;
-                }
-                float aoT = float(hitSteps) / 128.0;
-                float aoS = sqrt(aoT);
-                float ao = clamp(1.0 - aoS * sqrt(aoS), 0.1, 1.0);
-
-                float tCol = clamp((trap - u_trapOffset) * u_trapScale, 0.0, 1.0);
-
-                vec3 albedo = cosinePalette(tCol + u_colorShift);
-                col = albedo * (0.25 * ao + 0.85 * diff * ao) + 0.35 * spec * ao;
-
-                /* Wireframe-style surface grid. This is not a polygon mesh
-                   wireframe, but a triplanar lattice evaluated on the hit
-                   surface in object space. */
-#ifdef ENABLE_WIREFRAME
-                {
-                    vec3 gp = abs(fract(p * 6.0) - 0.5);
-                    float gl = min(gp.x, min(gp.y, gp.z));
-                    float aa = max(fwidth(gl), 1e-5);
-                    float wire = 1.0 - smoothstep(0.0, aa * 1.5, gl);
-                    col = mix(col * 0.18, vec3(0.35, 0.95, 1.0), wire);
-                }
-#endif
-                hitAny = true;
-            }
         }
     }
-    if (!hitAny) {
+
+    /* Screen-space derivatives replace the old four extra sceneDE taps:
+       the shading normal now costs zero additional DE evaluations. */
+    vec3 dpdx = dFdx(p);
+    vec3 dpdy = dFdy(p);
+
+    if (hit) {
+        vec3 lightDir = u_lightDir;
+        vec3 viewDir = -rd;
+        vec3 n = cross(dpdx, dpdy);
+        float nLen = length(n);
+        n = (nLen > 1e-20) ? n / nLen : viewDir;
+        /* dFdx x dFdy has no fixed orientation; force it to face the viewer. */
+        if (dot(n, viewDir) < 0.0) n = -n;
+        vec3 halfVec = normalize(lightDir + viewDir);
+
+        float ndl = dot(n, lightDir);
+        float diff = 0.0;
+        float spec = 0.0;
+        if (ndl > 0.0) {
+            float shadowK = 1.0;
+#ifdef ENABLE_SHADOWS
+            /* Skip the extra DE march while dragging/zooming; the settled
+               full-resolution frame restores shadows. */
+            if (u_skipShadows == 0) {
+                /* Offset slightly along the normal from the surface, then
+                   march toward the light to check occlusion. */
+                shadowK = shadowMarch(p + n * eps * 4.0, lightDir, eps * 3.0);
+            }
+#endif
+            diff = ndl * shadowK;
+            float sp = max(dot(n, halfVec), 0.0);
+            sp *= sp; sp *= sp; sp *= sp; sp *= sp; sp *= sp;
+            spec = sp * shadowK;
+        }
+        float aoT = float(hitSteps) / 128.0;
+        float aoS = sqrt(aoT);
+        float ao = clamp(1.0 - aoS * sqrt(aoS), 0.1, 1.0);
+
+        float tCol = clamp((trap - u_trapOffset) * u_trapScale, 0.0, 1.0);
+
+        vec3 albedo = cosinePalette(tCol + u_colorShift);
+        col = albedo * (0.25 * ao + 0.85 * diff * ao) + 0.35 * spec * ao;
+
+        /* Wireframe-style surface grid. This is not a polygon mesh
+           wireframe, but a triplanar lattice evaluated on the hit
+           surface in object space. */
+#ifdef ENABLE_WIREFRAME
+        {
+            vec3 gp = abs(fract(p * 6.0) - 0.5);
+            float gl = min(gp.x, min(gp.y, gp.z));
+            float aa = max(fwidth(gl), 1e-5);
+            float wire = 1.0 - smoothstep(0.0, aa * 1.5, gl);
+            col = mix(col * 0.18, vec3(0.35, 0.95, 1.0), wire);
+        }
+#endif
+    }
+    if (!hit) {
         float bgT = clamp(0.5 * (rdW.z + 1.0), 0.0, 1.0);
         col = mix(vec3(0.03, 0.04, 0.08), vec3(0.12, 0.16, 0.28), bgT);
     }
@@ -4919,123 +4865,6 @@ void main() {
      The full shader source contains every DE for reference, but each
      compiled program keeps only the selected DE plus its helpers.
      ---------------------------------------------------------------- */
-  const DE_FUNCTION_BY_FRACTAL = [
-    'mandelbulbIqV2DE',       // 0
-    'benesiDE',               // 1
-    'xenodreambuieDE',        // 2
-    'riemannHoboldDE',        // 3
-    'msltoeToroidalDE',       // 4
-    'riemannHoboldPow8DE',    // 5
-    'aexion4dDE',             // 6
-    'benesiPwr2MandelbulbDE', // 7
-    'bristorbrot4dDE',        // 8
-    'aboxMod11DE',            // 9
-    'sierpinski3dDE',         // 10
-    'sierpinski3dV2DE',       // 11
-    'sierpinski3dV3DE',       // 12
-    'sierpinski3dV4DE',       // 13
-    'sierpinski4dDE',         // 14
-    'kleinianStdDEDE',        // 15
-    'kleinianPseudoDE',       // 16
-    'kleinianMod1DE',         // 17
-    'kleinianMod2DE',         // 18
-    'kleinianMod3DE',         // 19
-    'kleinianMod4DE',         // 20
-    'kleinianMod5DE',         // 21
-    'kleinianMod6DE',         // 22
-    'kleinianMod7DE',         // 23
-    'kleinian4dDE',           // 24
-    'kleinianTrigDE',         // 25
-    'kleinianTrigV2DE',       // 26
-    'kleinianTrigV3DE',       // 27
-    'josKleinianDE',          // 28
-    'josKleinianV2DE',        // 29
-    'josKleinianV3DE',        // 30
-    'josKleinianV4DE',        // 31
-    'menger3DE',              // 32
-    'menger3M3dDE',           // 33
-    'menger4dDE',             // 34
-    'menger4dDE',             // 35 (identical to 34)
-    'menger4dMod2DE',         // 36
-    'mengerChebyshevDE',      // 37
-    'mengerCrossKifsDE',      // 38
-    'mengerCrossMod1DE',      // 39
-    'mengerMiddleModDE',      // 40
-    'mengerMod1DE',           // 41
-    'mengerOctoDE',           // 42
-    'mengerPolyFoldDE',       // 43
-    'mengerPrismShapeDE',     // 44
-    'mengerPrismShape2DE',    // 45
-    'mengerPwr2PolyDE',       // 46
-    'mengerPyramidDE',        // 47
-    'mengerSmoothDE',         // 48
-    'mengerSmoothChebyshevDE',// 49
-    'mengerSmoothMod1DE',     // 50
-    'mengerSpongeDE',         // 51
-    'mengerV2DE',             // 52
-    'mengerV3DE',             // 53
-    'mengerV4DE',             // 54
-    'mengerV5DE',             // 55
-    'mengerV6DE',             // 56
-    'mengerV7DE',             // 57
-    'mandelbulbIqPow8DE',     // 58
-    'xenodreambuieV1DE',      // 59
-    'riemannHoboldPow4DE',    // 60
-    'bristorbrotDE',          // 61
-    'aexionDE',               // 62
-    'aboxMod1DE',             // 63
-    'aboxMod2DE',             // 64
-    'aboxMB3D1DE',            // 65
-    'abox4dDE',               // 66
-    'msltoeV1DE',             // 67
-    'msltoeSym2DE',           // 68
-    'msltoeSym3DE',           // 69
-    'msltoeSym3V2DE',         // 70
-    'msltoeSym4DE',           // 71
-    'quaternionDE',           // 72
-    'quaternion3dDE',         // 73
-    'quaternion4dDE',         // 74
-    'hypercomplexDE',         // 75
-    'hypercomplexV2DE',       // 76
-    'xenodreambuieV3DE',      // 77
-    'amazingSurfDE',          // 78
-    'amazingSurfM3dDE',       // 79
-    'mandelbulbDE',           // 80
-    'mandelbulb2DE',          // 81
-    'mandelbulb3DE',          // 82
-    'mandelbulbPower2DE',     // 83
-    'mandelbulbAbsDE',        // 84
-    'mandelbulb4DE',          // 85
-    'mandelbulbAbsPower2DE',  // 86
-    'mandelbulbAtan2Power2DE',// 87
-    'mandelbulbBermarteDE',   // 88
-    'mandelbulbEyeDE',        // 89
-    'mandelbulbJuliabulbDE',  // 90
-    'mandelbulbKaliDE',       // 91
-    'mandelbulbKaliMultiDE',  // 92
-    'mandelbulbKosalosDE',    // 93
-    'mandelbulbKosalosV2DE',  // 94
-    'mandelbulbLambdaDE',     // 95
-    'mandelbulbMultiDE',      // 96
-    'mandelbulbMulti2DE',     // 97
-    'mandelbulbPlusZDE',      // 98
-    'mandelbulbPow2V1DE',     // 99
-    'mandelbulbPow2V2DE',     // 100
-    'mandelbulbPow2V3DE',     // 101
-    'mandelbulbPow2V4DE',     // 102
-    'mandelbulbPower1234DE',  // 103
-    'mandelbulbPupukuDE',     // 104
-    'mandelbulbQuadratDE',    // 105
-    'mandelbulbQuatDE',       // 106
-    'mandelbulbSinCosDE',     // 107
-    'mandelbulbSinCosV2DE',   // 108
-    'mandelbulbSinCosV3DE',   // 109
-    'mandelbulbSinCosV4DE',   // 110
-    'mandelbulbTailsDE',      // 111
-    'mandelbulbTailsDE',      // 112 (identical to 111)
-    'mandelbulbVaryPowerDE'   // 113
-  ];
-
   function findFunctionEnd(src, start) {
     let i = src.indexOf('{', start);
     if (i < 0) return src.length;
@@ -5086,7 +4915,7 @@ void main() {
      shader source for every uncached fractal. */
   const SCENE_DE_MARKER = 'float sceneDE(vec3 p, out float trap) {';
   const SCENE_DE_START = FRAG_SHADER.indexOf(SCENE_DE_MARKER);
-  if (SCENE_DE_START < 0) throw new Error('sceneDE dispatcher not found');
+  if (SCENE_DE_START < 0) throw new Error('sceneDE insertion marker not found');
   const FRAG_PREFIX = stripDEs(FRAG_SHADER.slice(0, SCENE_DE_START));
   const FRAG_SUFFIX = FRAG_SHADER.slice(findFunctionEnd(FRAG_SHADER, SCENE_DE_START));
 
@@ -5101,9 +4930,54 @@ void main() {
     }
   }
 
+  /* Fail loudly instead of silently rendering the wrong fractal when the
+     registry and the shader source drift apart. */
+  (function validateFractalRegistry() {
+    const problems = [];
+    const names = new Set();
+    const groups = new Set();
+    let lastGroup = null;
+    for (const f of FRACTALS) {
+      if (!Number.isInteger(f.id) || f.id < 0) {
+        problems.push(`invalid fractal id ${String(f.id)}`);
+      }
+      if (typeof f.group !== 'string' || !f.group) {
+        problems.push(`fractal ${f.id} has no group`);
+      } else if (f.group !== lastGroup) {
+        if (groups.has(f.group)) problems.push(`fractal group "${f.group}" is not contiguous`);
+        groups.add(f.group);
+        lastGroup = f.group;
+      }
+      if (typeof f.name !== 'string' || !f.name) {
+        problems.push(`fractal ${f.id} has no name`);
+      } else if (names.has(f.name)) {
+        problems.push(`duplicate fractal name "${f.name}"`);
+      }
+      names.add(f.name);
+      if (!DE_FN_BY_NAME[f.de]) {
+        problems.push(`fractal ${f.id} "${f.name}" references missing DE function "${f.de}"`);
+      }
+    }
+    for (const [alias, target] of Object.entries(PROGRAM_ALIAS)) {
+      const a = FRACTAL_BY_ID.get(+alias);
+      const b = FRACTAL_BY_ID.get(+target);
+      if (!a || !b) {
+        problems.push(`program alias ${alias} -> ${target} references an unknown fractal id`);
+      } else if (a.de !== b.de) {
+        problems.push(`program alias ${alias} -> ${target} maps different DE functions`);
+      }
+    }
+    if (problems.length) {
+      const msg = 'Fractal metadata validation failed:\n' + problems.join('\n');
+      fail(msg);
+      throw new Error(msg);
+    }
+  })();
+
   function buildFragmentSource(id) {
-    const name = DE_FUNCTION_BY_FRACTAL[id];
-    if (!name) throw new Error('Unknown fractal id: ' + id);
+    const def = FRACTAL_BY_ID.get(id);
+    if (!def) throw new Error('Unknown fractal id: ' + id);
+    const name = def.de;
     const fn = DE_FN_BY_NAME[name];
     if (!fn) throw new Error('Missing DE function: ' + name);
 
@@ -5132,7 +5006,6 @@ void main() {
   let vertShader = null;
   const PROGRAM_CACHE_LIMIT = 64;
   const programCache = new Map();
-  const PROGRAM_ALIAS = { 35: 34, 112: 111 };
   let shaderShadows = false, shaderWireframe = false;
   let activeProgramKey = '';
   function programKey(id) {
@@ -5279,7 +5152,7 @@ void main() {
 
   const params = {
     power: 8.0, wo_scale: 1.0, wi_scale: 1.0, zz_scale: 1.0,
-    eps_t: 0.5, max_iter: 32, max_steps: 128, bailout: 4.0,
+    eps_t: 0.5, max_iter: 32, max_steps: 128, bailout: 2.5,
     shadowsEnabled: false,
     wireframeEnabled: false,
     color_speed: 0.000,
@@ -6668,73 +6541,87 @@ void main() {
     113: 'Mandelbulb Vary Power V1 — power swept across the iteration range.'
   };
 
+  /* Visibility rules keyed by the tags used in SLIDERS / CHECKBOXES.
+     Kept pure so validateFractalParams() can probe every tag against every
+     registered fractal id. */
+  function fractalCompatible(t, fd) {
+    return fd === t ||
+      ((t === 59 || t === 77) && fd === 2) ||
+      (t === 60 && fd === 3) ||
+      (t >= 63 && t <= 66 && fd === 9);
+  }
+
+  function fractalRowVisible(t, def, key, kind) {
+    const fd = def.fractal;
+    if (kind === 'checkbox') {
+      if (fractalCompatible(t, fd)) return true;
+      if (fd === 'any') return true;
+      if (fd === 'asurf') return t === 78 || t === 79;
+      if (fd === 'mb-absopts') {
+        return (((t === 86 || t === 87 || t === 89) && (key !== 'mb_posZ' || t === 86)) ||
+                ((t === 99 || t === 101 || t === 105) && key.startsWith('mb_pre')) ||
+                (t === 100 && (key.startsWith('mb_pre') || key.startsWith('mb_post'))));
+      }
+      if (fd === 'kleinian') return t >= 15 && t <= 31;
+      if (fd === 'menger') return t >= 32 && t <= 57;
+      return false;
+    }
+
+    if (fd === 'pwr-shared') return t === 0 || t === 2 || t === 59 || t === 77 || t === 80 || t === 84 || t === 85 || (t >= 90 && t <= 97) || t === 104 || t === 106 || (t >= 107 && t <= 113);
+    if (fd === 'pwr-riem') return t === 3;
+    if (fd === 'pwr-ms') return t === 4 || t === 67;
+    if (fd === 'msltoe-sym') return t === 67 || (t >= 68 && t <= 71);
+    if (fd === 'mb') return t === 80 || t === 84 || t === 85 || t === 88 || (t >= 90 && t <= 98) || t === 103 || t === 104 || t === 106 || (t >= 107 && t <= 113);
+    if (fd === 'mb-de') return t === 0 || t === 58 || (t >= 80 && t <= 113);
+    if (fd === 'mb-off') return t === 100 || t === 101 || t === 102;
+    if (fd === 'mb100') return t === 100;
+    if (fd === 'mb101') return t === 101;
+    if (fd === 'mb102') return t === 102;
+    if (fd === 'mb105') return t === 105;
+    if (fd === 'mb106') return t === 106;
+    if (fd === 'mb-angle') return t === 90 || t === 91 || t === 92 || t === 96 || t === 97 || t === 103 || t === 104;
+    if (fd === 'mb-zscale') return t === 98 || (t >= 107 && t <= 112);
+    if (fd === 'mb-tail') return t === 111 || t === 112;
+    if (fd === 'mb-plus') return t === 98;
+    if (fd === 'mb-kos') return t === 93 || t === 94;
+    if (fd === 'mb-lambda') return t === 95;
+    if (fd === 'iq8') return t === 58;
+    if (fd === 'mb-m2') return t === 81 || t === 82 || t === 83;
+    if (fd === 'b3') return t === 61;
+    if (fd === 'q1') return t === 72;
+    if (fd === 'hc1') return t === 75;
+    if (fd === 'ms-symscale') return t === 67 || t === 70 || t === 71;
+    if (fd === 'ms-symadd') return t === 70 || t === 71;
+    if (fd === 'mb-abs') return t === 84;
+    if (fd === 'mb4') return t === 85;
+    if (fd === 'mb-atan') return t === 87 || t === 89;
+    if (fd === 'mb-eye') return t === 89;
+    if (fd === 'mb-bm') return t === 88;
+    if (fd === 'mb-var') return t === 113;
+    if (fd === 'xeno3') return t === 77;
+    if (fd === 'asurf') return t === 78 || t === 79;
+    if (fd === 'q3') return t === 73;
+    if (fd === 'q4') return t === 74;
+    if (fd === 'hc2') return t === 76;
+    if (fd === 'kleinian') return t >= 15 && t <= 31;
+    if (fd === 'menger') return t >= 32 && t <= 57;
+    if (t === 62 && fd === 6) return key === 'ax_cadd' || key === 'ax_anDEscale' || key === 'ax_anDEoff0';
+    if ((t === 90 || t === 58) && (key === 'off_x' || key === 'off_y' || key === 'off_z')) return true;
+    if (t >= 67 && t <= 71 && fd === 4) {
+      if (t === 67) return key === 'ms_phiPower' || key === 'ms_minR' ||
+        key === 'ms_scaleX' || key === 'ms_scaleY' || key === 'ms_scaleZ';
+      if (t === 68 || t === 69) return key === 'ms_scaleB';
+      if (t === 71) return key === 'ms_scaleX' || key === 'ms_scaleY' || key === 'ms_scaleZ';
+      return false;
+    }
+    if (fd === -1) return true;
+    return fractalCompatible(t, fd);
+  }
+
   function updateSliderVisibility() {
-    const compat = fd => fd === fractalType ||
-      ((fractalType === 59 || fractalType === 77) && fd === 2) ||
-      (fractalType === 60 && fd === 3) ||
-      (fractalType >= 63 && fractalType <= 66 && fd === 9);
     for (const key in ui) {
       const rec = ui[key]; const def = rec.def;
-      let visible;
-      if (rec.kind === 'checkbox') {
-        visible = compat(def.fractal) || (def.fractal === 'any') ||
-                  (def.fractal === 'asurf' && (fractalType === 78 || fractalType === 79)) ||
-                  (def.fractal === 'mb-absopts' &&
-                   (((fractalType === 86 || fractalType === 87 || fractalType === 89) &&
-                     (def.key !== 'mb_posZ' || fractalType === 86)) ||
-                    ((fractalType === 99 || fractalType === 101 || fractalType === 105) && def.key.startsWith('mb_pre')) ||
-                    (fractalType === 100 && (def.key.startsWith('mb_pre') || def.key.startsWith('mb_post'))))) ||
-                  (def.fractal === 'kleinian' && fractalType >= 15 && fractalType <= 31) ||
-                  (def.fractal === 'menger' && fractalType >= 32 && fractalType <= 57);
-      } else if (def.fractal === 'pwr-shared') visible = (fractalType === 0 || fractalType === 2 || fractalType === 59 || fractalType === 77 || fractalType === 80 || fractalType === 84 || fractalType === 85 || (fractalType >= 90 && fractalType <= 97) || fractalType === 104 || fractalType === 106 || (fractalType >= 107 && fractalType <= 113));
-      else if (def.fractal === 'pwr-riem')   visible = (fractalType === 3);
-      else if (def.fractal === 'pwr-ms')     visible = (fractalType === 4 || fractalType === 67);
-      else if (def.fractal === 'msltoe-sym') visible = (fractalType === 67 || (fractalType >= 68 && fractalType <= 71));
-      else if (def.fractal === 'mb')          visible = (fractalType === 80 || fractalType === 84 || fractalType === 85 || fractalType === 88 || (fractalType >= 90 && fractalType <= 98) || fractalType === 103 || fractalType === 104 || fractalType === 106 || (fractalType >= 107 && fractalType <= 113));
-      else if (def.fractal === 'mb-de')       visible = (fractalType === 0 || fractalType === 58 || (fractalType >= 80 && fractalType <= 113));
-      else if (def.fractal === 'mb-off')      visible = (fractalType === 100 || fractalType === 101 || fractalType === 102);
-      else if (def.fractal === 'mb100')       visible = (fractalType === 100);
-      else if (def.fractal === 'mb101')       visible = (fractalType === 101);
-      else if (def.fractal === 'mb102')       visible = (fractalType === 102);
-      else if (def.fractal === 'mb105')       visible = (fractalType === 105);
-      else if (def.fractal === 'mb106')       visible = (fractalType === 106);
-      else if (def.fractal === 'mb-angle')    visible = (fractalType === 90 || fractalType === 91 || fractalType === 92 || fractalType === 96 || fractalType === 97 || fractalType === 103 || fractalType === 104);
-      else if (def.fractal === 'mb-zscale')   visible = (fractalType === 98 || (fractalType >= 107 && fractalType <= 112));
-      else if (def.fractal === 'mb-tail')     visible = (fractalType === 111 || fractalType === 112);
-      else if (def.fractal === 'mb-plus')     visible = (fractalType === 98);
-      else if (def.fractal === 'mb-kos')      visible = (fractalType === 93 || fractalType === 94);
-      else if (def.fractal === 'mb-lambda')   visible = (fractalType === 95);
-      else if (def.fractal === 'iq8')         visible = (fractalType === 58);
-      else if (def.fractal === 'mb-m2')       visible = (fractalType === 81 || fractalType === 82 || fractalType === 83);
-      else if (def.fractal === 'b3')          visible = (fractalType === 61);
-      else if (def.fractal === 'q1')          visible = (fractalType === 72);
-      else if (def.fractal === 'hc1')         visible = (fractalType === 75);
-      else if (def.fractal === 'ms-symscale') visible = (fractalType === 67 || fractalType === 70 || fractalType === 71);
-      else if (def.fractal === 'ms-symadd')   visible = (fractalType === 70 || fractalType === 71);
-      else if (def.fractal === 'mb-abs')      visible = (fractalType === 84);
-      else if (def.fractal === 'mb4')         visible = (fractalType === 85);
-      else if (def.fractal === 'mb-atan')     visible = (fractalType === 87 || fractalType === 89);
-      else if (def.fractal === 'mb-eye')      visible = (fractalType === 89);
-      else if (def.fractal === 'mb-bm')       visible = (fractalType === 88);
-      else if (def.fractal === 'mb-var')      visible = (fractalType === 113);
-      else if (def.fractal === 'xeno3')      visible = (fractalType === 77);
-      else if (def.fractal === 'asurf')      visible = (fractalType === 78 || fractalType === 79);
-      else if (def.fractal === 'q3')          visible = (fractalType === 73);
-      else if (def.fractal === 'q4')          visible = (fractalType === 74);
-      else if (def.fractal === 'hc2')         visible = (fractalType === 76);
-      else if (def.fractal === 'kleinian')   visible = (fractalType >= 15 && fractalType <= 31);
-      else if (def.fractal === 'menger')     visible = (fractalType >= 32 && fractalType <= 57);
-      else if (fractalType === 62 && def.fractal === 6) visible = (key === 'ax_cadd' || key === 'ax_anDEscale' || key === 'ax_anDEoff0');
-      else if ((fractalType === 90 || fractalType === 58) && (key === 'off_x' || key === 'off_y' || key === 'off_z')) visible = true;
-      else if (fractalType >= 67 && fractalType <= 71 && def.fractal === 4) {
-        if (fractalType === 67) visible = (key === 'ms_phiPower' || key === 'ms_minR' ||
-          key === 'ms_scaleX' || key === 'ms_scaleY' || key === 'ms_scaleZ');
-        else if (fractalType === 68 || fractalType === 69) visible = (key === 'ms_scaleB');
-        else if (fractalType === 71) visible = (key === 'ms_scaleX' || key === 'ms_scaleY' || key === 'ms_scaleZ');
-        else visible = false;
-      }
-      else if (def.fractal === -1)           visible = true;
-      else                                     visible = compat(def.fractal);
+      let visible = fractalRowVisible(fractalType, def, key, rec.kind);
       if (fractalType === 59 && (key === 'xeno_sA' || key === 'xeno_sB' ||
           key === 'xeno_offX' || key === 'xeno_offY' || key === 'xeno_offZ')) visible = false;
       const wasVisible = rec.row.style.display !== 'none';
@@ -6763,6 +6650,43 @@ void main() {
     formulaInfo.textContent = info || '';
     formulaInfo.classList.toggle('hidden', !info);
   }
+
+  /* Every SLIDERS / CHECKBOXES tag must resolve to a real fractal id (or a
+     tag that matches at least one). Catches typos that would otherwise
+     silently hide a control forever. */
+  (function validateFractalParams() {
+    const problems = [];
+    function check(def, kind) {
+      const fd = def.fractal;
+      if (typeof fd === 'number') {
+        if (fd !== -1 && !FRACTAL_BY_ID.has(fd)) {
+          problems.push(`${kind} "${def.key}" references unknown fractal id ${fd}`);
+        }
+        return;
+      }
+      if (typeof fd !== 'string') {
+        problems.push(`${kind} "${def.key}" has invalid fractal tag ${String(fd)}`);
+        return;
+      }
+      for (const f of FRACTALS) {
+        if (fractalRowVisible(f.id, def, def.key, kind)) return;
+      }
+      problems.push(`${kind} "${def.key}" has fractal tag "${fd}" that never matches any fractal`);
+    }
+    for (const def of SLIDERS) check(def, 'slider');
+    for (const def of CHECKBOXES) check(def, 'checkbox');
+    for (const id of Object.keys(FORMULA_INFO)) {
+      if (!FRACTAL_BY_ID.has(Number(id))) {
+        problems.push(`FORMULA_INFO has an entry for unknown fractal id ${id}`);
+      }
+    }
+    if (problems.length) {
+      const msg = 'Fractal parameter validation failed:\n' + problems.join('\n');
+      fail(msg);
+      throw new Error(msg);
+    }
+  })();
+
   updateSliderVisibility();
 
   function colorSpeedActive() { return params.color_speed > 0.0001; }
@@ -6809,7 +6733,7 @@ void main() {
     setAutoRotate(false);
 
     params.power = 8.0; params.wo_scale = 1.0; params.wi_scale = 1.0; params.zz_scale = 1.0;
-    params.eps_t = 0.5; params.max_iter = 32; params.max_steps = 128; params.bailout = 4.0;
+    params.eps_t = 0.5; params.max_iter = 32; params.max_steps = 128; params.bailout = 2.5;
     params.shadowsEnabled = false;
     params.wireframeEnabled = false;
     params.rot_x_speed = 3.0; params.rot_y_speed = 5.0; params.rot_z_speed = 7.0;
@@ -7104,6 +7028,23 @@ void main() {
     activateProgram(fractalType);
   }
 
+  /* Walk the picker in display order, wrapping at the ends. */
+  function stepFractal(delta) {
+    const i = FRACTAL_INDEX_BY_ID.get(fractalType);
+    if (i === undefined) return;
+    const next = (i + delta + FRACTALS.length) % FRACTALS.length;
+    setFractal(FRACTALS[next].id);
+  }
+
+  prevFractalBtn.addEventListener('click', () => {
+    stepFractal(-1);
+    prevFractalBtn.blur();
+  });
+  nextFractalBtn.addEventListener('click', () => {
+    stepFractal(1);
+    nextFractalBtn.blur();
+  });
+
   /* Blur the select after change so shortcuts like H keep working */
   selectEl.addEventListener('change', () => {
     setFractal(parseInt(selectEl.value, 10));
@@ -7161,6 +7102,12 @@ void main() {
       e.preventDefault();
     } else if (k === 'r') {
       resetAll();
+      e.preventDefault();
+    } else if (k === 'z') {
+      if (!e.repeat) stepFractal(-1);
+      e.preventDefault();
+    } else if (k === 'x') {
+      if (!e.repeat) stepFractal(1);
       e.preventDefault();
     } else if (/^(Digit|Numpad)[0-9]$/.test(e.code)) {
       const digit = parseInt(e.code.slice(-1), 10);
@@ -7297,13 +7244,13 @@ void main() {
     u3f(U.u_up, up[0], up[1], up[2]);
 
     u1f(U.u_colorShift, colorShift);
+    /* Interaction renders at reduced resolution; skip shadow rays there and
+       restore them on the settled frame. */
+    u1i(U.u_skipShadows, interactive ? 1 : 0);
 
     const uploadFractal = !!activeRec && activeRec.uploadedVersion !== paramsVersion;
     if (uploadFractal) {
     u1f(U.u_boundR, tune.bound);
-    u1i(U.u_shadowsEnabled, params.shadowsEnabled ? 1 : 0);
-    u1i(U.u_wireframeEnabled, params.wireframeEnabled ? 1 : 0);
-    u1i(U.u_palette, paletteIndex);
     const pal = PALETTES[paletteIndex];
     u3f(U.u_palA, pal.a[0], pal.a[1], pal.a[2]);
     u3f(U.u_palB, pal.b[0], pal.b[1], pal.b[2]);
@@ -7325,12 +7272,33 @@ void main() {
     else pwr = params.power;
 
     u1f(U.u_power, pwr);
+    /* Hoist IQv2's per-iteration power tests: mirror the float32 uniform
+       values so the shader only branches on precomputed flags. */
+    const pwrF = Math.fround(pwr);
+    const woF = Math.fround(params.wo_scale);
+    const wiF = Math.fround(params.wi_scale);
+    const iqUnscaled = Math.abs(woF - 1.0) < 1e-5 &&
+                       Math.abs(wiF - 1.0) < 1e-5;
+    const iqFast8 = iqUnscaled && Math.abs(pwrF - 8.0) < 1e-5;
+    let iqPowerMode = 0;
+    if (Math.abs(pwrF - 2.0) < 1e-5) iqPowerMode = 2;
+    else if (Math.abs(pwrF - 3.0) < 1e-5) iqPowerMode = 3;
+    else if (Math.abs(pwrF - 4.0) < 1e-5) iqPowerMode = 4;
+    else if (Math.abs(pwrF - 5.0) < 1e-5) iqPowerMode = 5;
+    else if (Math.abs(pwrF - 6.0) < 1e-5) iqPowerMode = 6;
+    else if (Math.abs(pwrF - 8.0) < 1e-5) iqPowerMode = 8;
+    const iqFastPower = iqUnscaled &&
+                        (iqPowerMode === 3 || iqPowerMode === 5 || iqPowerMode === 6);
+    u1i(U.u_iq_fast8, iqFast8 ? 1 : 0);
+    u1i(U.u_iq_fastPower, iqFastPower ? 1 : 0);
+    u1i(U.u_iq_powerMode, iqPowerMode);
     u1f(U.u_wo_scale, params.wo_scale);
     u1f(U.u_wi_scale, params.wi_scale);
     u1f(U.u_zz_scale, params.zz_scale);
     u1f(U.u_eps, getEps());
     u1f(U.u_stepScale, tune.step);
-    u1i(U.u_max_iter, params.max_iter | 0);
+    /* The loops use u_max_iter as their bound, so keep the old hard cap of 32. */
+    u1i(U.u_max_iter, Math.min(32, Math.max(0, params.max_iter | 0)));
     u1i(U.u_max_steps, params.max_steps | 0);
     u1f(U.u_bailout, params.bailout);
     u1f(U.u_bailout2, params.bailout * params.bailout);
