@@ -2525,39 +2525,51 @@ float aexion4dDE(vec3 pos, out float trap) {
     vec4 z = vec4(0.0);
     vec4 constC = vec4(0.0);
     float dr = 1.0;
-    float trapv = 1e10;
     float rPixel = max(length(pos), 1e-9);
-    trapv = max(rPixel, 1e-6);
+    float trapv = max(rPixel, 1e-6);
     bool escaped = false;
+    vec4 z2 = vec4(0.0);
+    float zz = 0.0;
     if (u_max_iter > 0) {
-        trapv = min(trapv, rPixel);
-        vec4 tq = vec4(pos.x + pos.y + pos.z, -pos.x - pos.y + pos.z,
+        vec4 qr = vec4(pos.x + pos.y + pos.z, -pos.x - pos.y + pos.z,
                        -pos.x + pos.y - pos.z, pos.x - pos.y - pos.z);
-        tq = abs(tq) + vec4(u_ax_cadd) + u_ax_domainOffset;
-        if (u_ax_absFirst == 1) tq = abs(tq);
-        constC = tq * u_ax_cpixel;
-        float t0 = length(tq);
+        qr = abs(qr) + vec4(u_ax_cadd) + u_ax_domainOffset;
+        if (u_ax_absFirst == 1) qr = abs(qr);
+        constC = qr * u_ax_cpixel;
+        float t0 = length(qr);
         if (u_ax_initQuadray == 1) {
-            z = tq;
+            z = qr;
             dr *= clamp(t0 / rPixel, 1e-3, 1e3) * u_ax_anDEscale;
-        } else z = vec4(0.0);
+        }
         dr = dr * 2.0 * t0 + 1.0;
-        vec4 q0 = quadQuad(z);
+        vec4 q0 = vec4(0.0);
+        if (u_ax_initQuadray == 1) {
+            vec4 zsq = z * z;
+            vec2 ab = zsq.xz - zsq.yw;
+            vec2 tq2 = 2.0 * vec2(z.w, z.x) * vec2(z.z, z.y);
+            q0 = vec4(ab + tq2, tq2 - ab).xzyw;
+        }
         dr = dr * u_ax_scale + u_ax_anDEoff0;
         z = q0 + constC;
-        escaped = dot(z, z) > u_bailout2;
+        z2 = z * z;
+        zz = z2.x + z2.y + z2.z + z2.w;
+        escaped = zz > u_bailout2;
     }
+    float twoScale = 2.0 * u_ax_scale;
+    float scalePlusOff = u_ax_scale + u_ax_anDEoff0;
     for (int i = 1; i < u_max_iter && !escaped; i++) {
-        float r_cur = length(z);
+        float r_cur = sqrt(zz);
         trapv = min(trapv, max(r_cur, 1e-6));
-        dr = dr * 2.0 * r_cur + 1.0;
-        vec4 q = quadQuad(z);
-        dr = dr * u_ax_scale + u_ax_anDEoff0;
+        dr = dr * (twoScale * r_cur) + scalePlusOff;
+        vec2 ab = z2.xz - z2.yw;
+        vec2 tq2 = 2.0 * vec2(z.w, z.x) * vec2(z.z, z.y);
+        vec4 q = vec4(ab + tq2, tq2 - ab).xzyw;
         z = q + constC;
-
-        if (dot(z, z) > u_bailout2) break;
+        z2 = z * z;
+        zz = z2.x + z2.y + z2.z + z2.w;
+        escaped = zz > u_bailout2;
     }
-    float rFinal = max(length(z), 1e-6);
+    float rFinal = max(sqrt(zz), 1e-6);
     trap = trapv;
     return 0.5 * log(rFinal) * rFinal / max(dr, 1e-6);
 }
@@ -2567,34 +2579,45 @@ float aexionDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     vec4 constC = vec4(0.0);
     float dr = 1.0;
-    float trapv = max(length(pos), 1e-6);
+    vec4 z2 = z * z;
+    float zz = z2.x + z2.y + z2.z + z2.w;
+    float trapv = max(sqrt(zz), 1e-6);
     bool escaped = false;
     if (u_max_iter > 0) {
-        float r0 = length(z);
-        if (r0 > u_bailout) {
+        if (zz > u_bailout2) {
             escaped = true;
         } else {
-            trapv = min(trapv, max(r0, 1e-6));
-            vec4 tq = vec4(z.x + z.y + z.z, -z.x - z.y + z.z,
+            vec4 qr = vec4(z.x + z.y + z.z, -z.x - z.y + z.z,
                            -z.x + z.y - z.z, z.x - z.y - z.z);
-            z = abs(tq) + vec4(u_ax_cadd);
+            z = abs(qr) + vec4(u_ax_cadd);
             constC = z;
-            r0 = length(z);
+            z2 = z * z;
+            zz = z2.x + z2.y + z2.z + z2.w;
+            float r0 = sqrt(zz);
             trapv = min(trapv, max(r0, 1e-6));
             dr = dr * 2.0 * max(r0, 1e-6) + 1.0;
-            z = quadQuad(z) + constC;
-            escaped = dot(z, z) > u_bailout2;
+            vec2 ab = z2.xz - z2.yw;
+            vec2 tq2 = 2.0 * vec2(z.w, z.x) * vec2(z.z, z.y);
+            vec4 q = vec4(ab + tq2, tq2 - ab).xzyw;
+            z = q + constC;
+            z2 = z * z;
+            zz = z2.x + z2.y + z2.z + z2.w;
+            escaped = zz > u_bailout2;
         }
     }
     for (int i = 1; i < u_max_iter && !escaped; i++) {
-        float r_cur = length(z);
-        if (r_cur > u_bailout) break;
+        float r_cur = sqrt(zz);
         trapv = min(trapv, max(r_cur, 1e-6));
         dr = dr * 2.0 * max(r_cur, 1e-6) + 1.0;
-        z = quadQuad(z) + constC;
-        if (dot(z, z) > u_bailout2) break;
+        vec2 ab = z2.xz - z2.yw;
+        vec2 tq2 = 2.0 * vec2(z.w, z.x) * vec2(z.z, z.y);
+        vec4 q = vec4(ab + tq2, tq2 - ab).xzyw;
+        z = q + constC;
+        z2 = z * z;
+        zz = z2.x + z2.y + z2.z + z2.w;
+        escaped = zz > u_bailout2;
     }
-    float rFinal = max(length(z), 1e-6);
+    float rFinal = max(sqrt(zz), 1e-6);
     trap = trapv;
     return (0.5 * log(rFinal) * rFinal / max(dr, 1e-6)) * u_ax_anDEscale + u_ax_anDEoff0;
 }
