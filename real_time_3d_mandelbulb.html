@@ -675,6 +675,8 @@ uniform vec3  u_ab_qLim, u_ab_qLim2, u_ab_qK; /* quad fold: limit, 2*limit, scal
 uniform vec3  u_ab_foldC;                   /* 1 - abs(add111), for the tent fold */
 uniform float u_ab_minR2, u_ab_absG1;
 uniform float u_as_scale, u_as_scaleVary, u_as_minR, u_as_scale1;
+uniform float u_as_sqrtMinR, u_as_minRSafe;
+uniform vec2  u_as_foldLim, u_as_foldMul;
 uniform vec3  u_as_add111, u_as_cMult, u_as_off000, u_as_offA000;
 uniform int   u_as_addC, u_as_cyl;
 uniform int   u_ab_rotEnabled, u_ab_analyticDE;
@@ -2954,63 +2956,59 @@ float abox4dDE(vec3 pos, out float trap) {
 
 /* ===================== Amazing Surf ===================== */
 float amazingSurfDE(vec3 pos, out float trap) {
-    vec4 c = vec4(pos, 0.0);
     vec3 z = pos;
     float dr = 1.0;
     float actualScale = u_as_scale;
-    float trap2 = dot(z, z);
+    float zz = dot(z, z);
+    float trap2 = zz;
+    vec3 cAdd = pos.yxz * u_as_cMult;
     for (int i = 0; i < u_max_iter; i++) {
-        float r2 = dot(z, z);
-        if (r2 > u_bailout2) break;
-        trap2 = min(trap2, r2);
+        if (zz > u_bailout2) break;
+        trap2 = min(trap2, zz);
         actualScale = u_as_scale + u_as_scaleVary * (abs(actualScale) - 1.0);
 
-        z.x = abs(z.x + u_as_add111.x) - abs(z.x - u_as_add111.x) - z.x;
-        z.y = abs(z.y + u_as_add111.y) - abs(z.y - u_as_add111.y) - z.y;
+        z.xy = u_as_foldMul * clamp(z.xy, -u_as_foldLim, u_as_foldLim) - z.xy;
 
-        float rr = dot(z, z);
-        if (u_as_cyl == 1) rr -= z.z * z.z;
-        float sqrtMinR = sqrt(max(u_as_minR, 1e-9));
-        float dividend = rr < sqrtMinR ? sqrtMinR : min(rr, 1.0);
-        float m = actualScale / max(dividend, 1e-9);
+        float rr = u_as_cyl == 1 ? dot(z.xy, z.xy) : dot(z, z);
+        float dividend = rr < u_as_sqrtMinR ? u_as_sqrtMinR : min(rr, 1.0);
+        float m = actualScale / dividend;
         z *= (m - 1.0) * u_as_scale1 + 1.0;
         dr = dr * abs(m) + 1.0;
-        if (u_as_addC == 1) z += vec3(c.y, c.x, c.z) * u_as_cMult;
+        if (u_as_addC == 1) z += cAdd;
+        zz = dot(z, z);
     }
     trap = max(sqrt(trap2), 1e-6);
-    return length(z) / max(dr, 1e-6);
+    return sqrt(zz) / max(dr, 1e-6);
 }
 
 /* ===================== Amazing Surf M3D ===================== */
 float amazingSurfM3dDE(vec3 pos, out float trap) {
-    vec4 c = vec4(pos, 0.0);
     vec3 z = pos;
     float dr = 1.0;
     float actualScale = u_as_scale;
-    float trap2 = dot(z, z);
+    float zz = dot(z, z);
+    float trap2 = zz;
+    vec3 cMul = pos * u_as_cMult;
     for (int i = 0; i < u_max_iter; i++) {
-        float r2 = dot(z, z);
-        if (r2 > u_bailout2) break;
-        trap2 = min(trap2, r2);
+        if (zz > u_bailout2) break;
+        trap2 = min(trap2, zz);
         actualScale = u_as_scale + u_as_scaleVary * (abs(actualScale) - 1.0);
 
-        z.x = abs(z.x + u_as_add111.x) - abs(z.x - u_as_add111.x) - z.x;
-        z.y = abs(z.y + u_as_add111.y) - abs(z.y - u_as_add111.y) - z.y;
+        z.xy = u_as_foldMul * clamp(z.xy, -u_as_foldLim, u_as_foldLim) - z.xy;
         z += u_as_off000;
 
-        float rr = dot(z, z);
-        if (u_as_cyl == 1) rr -= z.z * z.z;
+        float rr = u_as_cyl == 1 ? dot(z.xy, z.xy) : dot(z, z);
         float m = actualScale;
-        float minR = max(u_as_minR, 1e-9);
-        if (rr < minR) m /= minR;
-        else if (rr < 1.0) m /= max(rr, 1e-9);
+        if (rr < u_as_minRSafe) m /= u_as_minRSafe;
+        else if (rr < 1.0) m /= rr;
         z *= m;
         dr = dr * abs(m) + 1.0;
-        if (u_as_addC == 1) z += vec3(c.x, c.y, c.z) * u_as_cMult;
+        if (u_as_addC == 1) z += cMul;
         z += u_as_offA000;
+        zz = dot(z, z);
     }
     trap = max(sqrt(trap2), 1e-6);
-    return length(z) / max(dr, 1e-6);
+    return sqrt(zz) / max(dr, 1e-6);
 }
 
 /* ===================== Sierpinski 3D ===================== */
@@ -8356,6 +8354,10 @@ void main() {
     u1f(U.u_as_scale, params.as_scale);
     u1f(U.u_as_scaleVary, params.as_scaleVary);
     u1f(U.u_as_minR, params.as_minR);
+    u1f(U.u_as_sqrtMinR, Math.sqrt(Math.max(params.as_minR, 1e-9)));
+    u1f(U.u_as_minRSafe, Math.max(params.as_minR, 1e-9));
+    u2f(U.u_as_foldLim, Math.abs(params.as_addX), Math.abs(params.as_addY));
+    u2f(U.u_as_foldMul, 2 * Math.sign(params.as_addX), 2 * Math.sign(params.as_addY));
     u1f(U.u_as_scale1, params.as_scale1);
     u3f(U.u_as_add111, params.as_addX, params.as_addY, params.as_addZ);
     u3f(U.u_as_cMult, params.as_cMultX, params.as_cMultY, params.as_cMultZ);
