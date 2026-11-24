@@ -3081,74 +3081,67 @@ float amazingSurfM3dDE(vec3 pos, out float trap) {
 }
 
 /* ===================== Sierpinski 3D ===================== */
+vec3 mengerSort3(vec3 z);
+
 float sierpinski3dDE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
+    vec3 z = pos;
     float dr = 1.0;
     float trap2 = 1e20;
-
+    float zz = dot(z, z);
+    float absScale = abs(u_sp_scaleA2);
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
         /* Normal full tetra-fold (B) */
         if (u_sp_normalFold == 1) {
-            float t;
-            if (z.x + z.y < 0.0) {
-                t = -z.y; z.y = -z.x; z.x = t;
-            }
-            if (z.x + z.z < 0.0) {
-                t = -z.z; z.z = -z.x; z.x = t;
-            }
-            if (z.y + z.z < 0.0) {
-                t = -z.z; z.z = -z.y; z.y = t;
-            }
+            float fd;
+            fd = min(0.0, z.x + z.y); z.x -= fd; z.y -= fd;
+            fd = min(0.0, z.x + z.z); z.x -= fd; z.z -= fd;
+            fd = min(0.0, z.y + z.z); z.y -= fd; z.z -= fd;
         }
 
         /* Reversed full tetra-fold */
-        if (u_sp_reverseFold == 1) {
-            if (z.x - z.y < 0.0) { float t = z.y; z.y = z.x; z.x = t; }
-            if (z.x - z.z < 0.0) { float t = z.z; z.z = z.x; z.x = t; }
-            if (z.y - z.z < 0.0) { float t = z.z; z.z = z.y; z.y = t; }
-        }
+        if (u_sp_reverseFold == 1) z = mengerSort3(z);
 
         /* Scale (A) */
         z *= u_sp_scaleA2;
 
         /* Negated offset (C) */
         if (i >= u_sp_startC && i < u_sp_stopC)
-            z.xyz -= u_sp_offset111;
+            z -= u_sp_offset111;
 
         /* Rotation (R) */
         if (u_sp_rotEnabled == 1 && i >= u_sp_rotStart && i < u_sp_rotStop)
-            z.xyz = u_sp_rotMat * z.xyz;
+            z = u_sp_rotMat * z;
 
         if (u_sp_analyticDE == 1)
-            dr = dr * abs(u_sp_scaleA2) * u_sp_anDEscale + u_sp_anDEoff;
+            dr = dr * absScale * u_sp_anDEscale + u_sp_anDEoff;
         else
-            dr = dr * abs(u_sp_scaleA2);
+            dr = dr * absScale;
 
-        /* Escape check, matching Mandelbulber (after the iteration) */
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
 
-    float rFinal = max(length(z), 1e-6);
     trap = max(sqrt(trap2), 1e-6);
     /* Mandelbulber's IFS DE: (r - 2) / DE */
-    return (rFinal - 2.0) / max(dr, 1e-6);
+    return (sqrt(zz) - 2.0) / max(dr, 1e-6);
 }
 
 /* ===================== Sierpinski 3D V2 ===================== */
 float sierpinski3dV2DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
+    vec3 z = pos;
     float dr = 1.0;
     float trap2 = 1e20;
-
+    float zz = dot(z, z);
+    float absScale2 = abs(u_s_scale2);
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
         /* Pre-transform T: offset 000 + rotation 2 */
         if (u_s_preEnabled == 1 && i >= u_s_startT && i < u_s_stopT1) {
-            z.xyz += u_s_offset000;
-            z.xyz = u_s_rot2Mat * z.xyz;
+            z += u_s_offset000;
+            z = u_s_rot2Mat * z;
         }
 
         /* Per-axis abs() fold (P) */
@@ -3162,19 +3155,19 @@ float sierpinski3dV2DE(vec3 pos, out float trap) {
         }
 
         /* Nearest-vertex tetrahedral fold */
-        vec4 va = vec4(0.0, 0.0, SQRT_1_3, 0.0);
-        vec4 vb = vec4(0.0, -2.0 * SQRT_1_3, -1.0, 0.0);
-        vec4 vc = vec4(-1.0, SQRT_1_3, -1.0, 0.0);
-        vec4 vd = vec4(1.0, SQRT_1_3, -1.0, 0.0);
+        vec3 va = vec3(0.0, 0.0, SQRT_1_3);
+        vec3 vb = vec3(0.0, -2.0 * SQRT_1_3, -1.0);
+        vec3 vc = vec3(-1.0, SQRT_1_3, -1.0);
+        vec3 vd = vec3(1.0, SQRT_1_3, -1.0);
         if (u_s_scaleVerts == 1) {
             va *= u_s_scale1111.x;
             vb *= u_s_scale1111.y;
             vc *= u_s_scale1111.z;
             vd *= u_s_scale1111.w;
         }
-        vec4 tv = z - va;
+        vec3 tv = z - va;
         float d = dot(tv, tv);
-        vec4 v = va;
+        vec3 v = va;
         float td = d;
 
         tv = z - vb; d = dot(tv, tv);
@@ -3184,12 +3177,12 @@ float sierpinski3dV2DE(vec3 pos, out float trap) {
         tv = z - vd; d = dot(tv, tv);
         if (d < td) { v = vd; }
         z = v + u_s_scale2 * (z - v);
-        dr *= abs(u_s_scale2);
+        dr *= absScale2;
 
         /* Spherical inversion (S). Thresholds invert0/invert1; factors 1/invert. */
         if (u_s_sphEnabled == 1 && i >= u_s_startS && i < u_s_stopS) {
             float m = 1.0;
-            float rr = dot(z.xyz, z.xyz);
+            float rr = dot(z, z);
             if (rr < u_s_inv0) {
                 m = (u_s_inv0 != 0.0) ? 1.0 / u_s_inv0 : 1.0;
             } else if (rr < u_s_inv1) {
@@ -3197,92 +3190,91 @@ float sierpinski3dV2DE(vec3 pos, out float trap) {
             } else {
                 m = (u_s_inv1 != 0.0) ? 1.0 / u_s_inv1 : 1.0;
             }
-            z.xyz *= m;
+            z *= m;
             dr *= m;
         }
 
         /* Rotation (R) */
         if (u_s_rotEnabled == 1 && i >= u_s_startR && i < u_s_stopR)
-            z.xyz = u_s_rotMat * z.xyz;
+            z = u_s_rotMat * z;
 
         if (u_s_analyticDE == 1)
             dr = dr * u_s_anDEscale + u_s_anDEoff;
 
-        /* Escape check, matching Mandelbulber (after the iteration) */
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
 
-    float rFinal = max(length(z), 1e-6);
     trap = max(sqrt(trap2), 1e-6);
-    return (rFinal - 2.0) / max(dr, 1e-6);
+    return (sqrt(zz) - 2.0) / max(dr, 1e-6);
 }
 
 /* ===================== Sierpinski 3D V3 ===================== */
 float sierpinski3dV3DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
+    vec3 z = pos;
     float dr = 1.0;
     float trap2 = 1e20;
-
+    float zz = dot(z, z);
+    float absScale = abs(u_s_scaleA2);
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
         /* Pre-transform T */
         if (u_s_preEnabled == 1 && i >= u_s_startT && i < u_s_stopT1) {
-            z.xyz += u_s_offset000;
-            z.xyz = u_s_rot2Mat * z.xyz;
+            z += u_s_offset000;
+            z = u_s_rot2Mat * z;
         }
 
         /* Reversed tetra-fold (always applied) */
-        if (z.x - z.y < 0.0) { float t = z.y; z.y = z.x; z.x = t; }
-        if (z.x - z.z < 0.0) { float t = z.z; z.z = z.x; z.x = t; }
-        if (z.y - z.z < 0.0) { float t = z.z; z.z = z.y; z.y = t; }
+        z = mengerSort3(z);
 
         z *= u_s_scaleA2;
-        z.xyz -= u_s_offset100;
+        z -= u_s_offset100;
 
         if (u_s_rotEnabled == 1 && i >= u_s_startR && i < u_s_stopR)
-            z.xyz = u_s_rotMat * z.xyz;
+            z = u_s_rotMat * z;
 
         /* Reversed full tetra-fold (C) */
         if (u_s_reverseFold == 1 && i >= u_s_startC && i < u_s_stopC) {
-            vec4 temp = z;
-            if (z.x + z.y < 0.0) { temp.x = -z.y; z.y = -z.x; z.x = temp.x; }
-            if (z.x + z.z < 0.0) { temp.x = -z.z; z.z = -z.x; z.x = temp.x; }
-            if (z.y + z.z < 0.0) { temp.y = -z.z; z.z = -z.y; z.y = temp.y; }
+            float fd;
+            fd = min(0.0, z.x + z.y); z.x -= fd; z.y -= fd;
+            fd = min(0.0, z.x + z.z); z.x -= fd; z.z -= fd;
+            fd = min(0.0, z.y + z.z); z.y -= fd; z.z -= fd;
         }
 
         if (u_s_analyticDE == 1)
-            dr = dr * abs(u_s_scaleA2) * u_s_anDEscale + u_s_anDEoff;
+            dr = dr * absScale * u_s_anDEscale + u_s_anDEoff;
         else
-            dr *= abs(u_s_scaleA2);
+            dr = dr * absScale;
 
-        /* Escape check, matching Mandelbulber (after the iteration) */
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
 
-    float rFinal = max(length(z), 1e-6);
     trap = max(sqrt(trap2), 1e-6);
-    return (rFinal - 2.0) / max(dr, 1e-6);
+    return (sqrt(zz) - 2.0) / max(dr, 1e-6);
 }
 
 /* ===================== Sierpinski 3D V4 ===================== */
 float sierpinski3dV4DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
+    vec3 z = pos;
     float dr = 1.0;
     float trap2 = 1e20;
-
+    float zz = dot(z, z);
+    float absScale = abs(u_s_scaleA2);
+    vec3 sphAdd = u_s_addC000 - u_s_offset000;
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
         /* Sphere inversion (D) */
         if (u_s_sphEnabled == 1 && i >= u_s_startD && i < u_s_stopD1) {
-            z.xyz += u_s_offset000;
-            float rr = dot(z.xyz, z.xyz);
+            z += u_s_offset000;
+            float rr = dot(z, z);
             float m = u_s_maxR2 / max(rr, 1e-9);
-            z.xyz *= m;
+            z *= m;
             dr *= m;
-            z.xyz += u_s_addC000 - u_s_offset000;
-            z.xyz *= u_s_scaleA1;
+            z += sphAdd;
+            z *= u_s_scaleA1;
             dr *= u_s_scaleA1;
         }
 
@@ -3295,40 +3287,35 @@ float sierpinski3dV4DE(vec3 pos, out float trap) {
 
         /* Normal full tetra-fold */
         if (u_s_normalFold == 1) {
-            float t;
-            if (z.x + z.y < 0.0) { t = -z.y; z.y = -z.x; z.x = t; }
-            if (z.x + z.z < 0.0) { t = -z.z; z.z = -z.x; z.x = t; }
-            if (z.y + z.z < 0.0) { t = -z.z; z.z = -z.y; z.y = t; }
+            float fd;
+            fd = min(0.0, z.x + z.y); z.x -= fd; z.y -= fd;
+            fd = min(0.0, z.x + z.z); z.x -= fd; z.z -= fd;
+            fd = min(0.0, z.y + z.z); z.y -= fd; z.z -= fd;
         }
 
         /* Reversed full tetra-fold */
-        if (u_s_reverseFold == 1) {
-            if (z.x - z.y < 0.0) { float t = z.y; z.y = z.x; z.x = t; }
-            if (z.x - z.z < 0.0) { float t = z.z; z.z = z.x; z.x = t; }
-            if (z.y - z.z < 0.0) { float t = z.z; z.z = z.y; z.y = t; }
-        }
+        if (u_s_reverseFold == 1) z = mengerSort3(z);
 
         z *= u_s_scaleA2;
 
         if (i >= u_s_startC && i < u_s_stopC)
-            z.xyz -= u_s_offset111;
+            z -= u_s_offset111;
 
         /* Rotation (R) */
         if (u_s_rotEnabled == 1 && i >= u_s_startR && i < u_s_stopR)
-            z.xyz = u_s_rotMat * z.xyz;
+            z = u_s_rotMat * z;
 
         if (u_s_analyticDE == 1)
-            dr = dr * abs(u_s_scaleA2) * u_s_anDEscale + u_s_anDEoff;
+            dr = dr * absScale * u_s_anDEscale + u_s_anDEoff;
         else
-            dr *= abs(u_s_scaleA2);
+            dr = dr * absScale;
 
-        /* Escape check, matching Mandelbulber (after the iteration) */
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
 
-    float rFinal = max(length(z), 1e-6);
     trap = max(sqrt(trap2), 1e-6);
-    return (rFinal - 2.0) / max(dr, 1e-6);
+    return (sqrt(zz) - 2.0) / max(dr, 1e-6);
 }
 
 /* ===================== Sierpinski 4D ===================== */
@@ -3336,9 +3323,11 @@ float sierpinski4dDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
     float dr = 1.0;
     float trap2 = 1e20;
+    float zz = dot(z, z);
+    float absScale = abs(u_s_scaleA2);
 
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
         /* Six plane folds (normal tetrahedron in 4D), branchless. */
         float fd;
@@ -3390,17 +3379,16 @@ float sierpinski4dDE(vec3 pos, out float trap) {
         }
 
         if (u_s_analyticDE == 1)
-            dr = dr * abs(u_s_scaleA2) * u_s_anDEscale + u_s_anDEoff;
+            dr = dr * absScale * u_s_anDEscale + u_s_anDEoff;
         else
-            dr *= abs(u_s_scaleA2);
+            dr = dr * absScale;
 
-        /* Escape check, matching Mandelbulber (after the iteration) */
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
 
-    float rFinal = max(length(z), 1e-6);
     trap = max(sqrt(trap2), 1e-6);
-    return (rFinal - 2.0) / max(dr, 1e-6);
+    return (sqrt(zz) - 2.0) / max(dr, 1e-6);
 }
 
 /* ===================== Kleinian family (15-31) ===================== */
