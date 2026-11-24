@@ -2198,25 +2198,28 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
 
 /* ===================== Msltoe Toroidal ===================== */
 float msltoeToroidalDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float r_cur = 0.0; trap = 1e10;
+    vec3 z = pos;
+    float dr = 1.0;
+    trap = 1e10;
+    float minR = u_ms_minR;
+    float invScaleB = 1.0 / max(u_ms_scaleB, 1e-9);
+    float powerOff = u_ms_power + u_ms_anDEoff0;
     for (int i = 0; i < u_max_iter; i++) {
         float r0 = length(z);
         if (r0 > u_bailout) break;
-        float r_safe = max(r0, 1e-6);
-        r_cur = r_safe;
         float aux_r = r0;
         if (u_ms_preEnabled == 1 && i >= u_ms_startD && i < u_ms_stopD) {
             vec3 zs = z * u_ms_scale3D;
             dr *= length(zs) / max(aux_r, 1e-9);
-            z = zs; r_cur = length(z);
+            z = zs;
         }
-        float minR = u_ms_minR;
-        float theta = atan(z.y, z.x);
-        float x1 = minR * cos(theta);
-        float y1 = minR * sin(theta);
-        float dx = z.x - x1, dy = z.y - y1;
-        float rr = dx*dx + dy*dy;
-        float rT = sqrt(rr + z.z*z.z);
+
+        float rxy2 = z.x * z.x + z.y * z.y;
+        float invRxy = inversesqrt(max(rxy2, 1e-12));
+        float rxy = rxy2 * invRxy;
+        float rm = rxy - minR;
+        float rr = rm * rm;
+        float rT = sqrt(rr + z.z * z.z);
         trap = min(trap, max(rT, 1e-6));
         float temp = rT;
         float phi;
@@ -2227,15 +2230,24 @@ float msltoeToroidalDE(vec3 pos, out float trap) {
             phi = atan(z.z, max(tB, 1e-9));
         }
         float rBlend = rT + (aux_r - rT) * u_ms_offsetR;
-        float rp = pow(max(rBlend, 1e-9), u_ms_power - 1.0) / max(u_ms_scaleB, 1e-9);
-        dr = rp * dr * (u_ms_power + u_ms_anDEoff0) + 1.0;
+        float rp = pow(max(rBlend, 1e-9), u_ms_power - 1.0) * invScaleB;
+        dr = rp * dr * powerOff + 1.0;
         rp *= rBlend;
+        float theta = atan(z.y, z.x) * u_ms_power;
         phi *= u_ms_phiPower;
-        theta *= u_ms_power;
         float ct = cos(theta), st = sin(theta);
         float cph = cos(phi), sph = sin(phi);
-        if (u_ms_swap == 0) { temp = minR + rp * cph; z.x = temp * ct; z.y = temp * st; }
-        else { temp = rp * cph; z.x = (sign(z.x) * x1 + temp) * ct; z.y = (sign(z.y) * y1 + temp) * st; }
+        if (u_ms_swap == 0) {
+            temp = minR + rp * cph;
+            z.x = temp * ct;
+            z.y = temp * st;
+        } else {
+            float x1 = minR * invRxy * z.x;
+            float y1 = minR * invRxy * z.y;
+            temp = rp * cph;
+            z.x = (sign(z.x) * x1 + temp) * ct;
+            z.y = (sign(z.y) * y1 + temp) * st;
+        }
         z.z = rp * sph;
         z.z *= u_ms_scaleNeg1;
         dr *= u_ms_anDEscale1;
@@ -2256,30 +2268,36 @@ float msltoeV1DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
+    float lenScale = max(length(u_ms_scale3D), 1e-6);
+    float r1 = max(u_ms_minR, 1e-6);
+    float absSym = abs(u_ms_symScale);
+    vec3 c = u_ms_symOffset + pos;
     for (int i = 0; i < u_max_iter; i++) {
-        float r = length(z);
-        if (r > u_bailout) break;
+        vec3 z2 = z * z;
+        float zz = z2.x + z2.y + z2.z;
+        if (zz > u_bailout2) break;
+        float r = sqrt(zz);
         trapv = min(trapv, max(r, 1e-6));
 
         z *= u_ms_scale3D;
-        dr *= max(length(u_ms_scale3D), 1e-6);
-        float r1 = max(u_ms_minR, 1e-6);
-        float theta = atan(z.y, z.x);
-        float x1 = r1 * cos(theta);
-        float y1 = r1 * sin(theta);
-        float rr = (z.x - x1)*(z.x - x1) + (z.y - y1)*(z.y - y1) + z.z*z.z;
+        dr *= lenScale;
+        float rxy2 = z.x * z.x + z.y * z.y;
+        float invRxy = inversesqrt(max(rxy2, 1e-12));
+        float rxy = rxy2 * invRxy;
+        float rm = rxy - r1;
+        float rr = rm * rm + z.z * z.z;
         float phi = asin(clamp(z.z / max(sqrt(max(rr, 1e-12)), 1e-9), -1.0, 1.0));
         float rr2 = rr * rr;
         float rp = rr2 * rr2;
         phi *= u_ms_phiPower;
-        theta *= u_ms_power;
+        float theta = atan(z.y, z.x) * u_ms_power;
         float ct = cos(theta), st = sin(theta);
         float cp = cos(phi), sp = sin(phi);
         float ring = r1 + rp * cp;
         z = vec3(ring * ct, ring * st, -rp * sp);
         dr = rp * dr * 5.0 + 1.0;
-        z = z * u_ms_symScale + u_ms_symOffset + pos;
-        dr *= abs(u_ms_symScale);
+        z = z * u_ms_symScale + c;
+        dr *= absSym;
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
@@ -2291,22 +2309,23 @@ float msltoeSym2DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
+    vec3 c = u_ms_symOffset + pos;
     for (int i = 0; i < u_max_iter; i++) {
-        float r = length(z);
-        if (r > u_bailout) break;
+        vec3 z2 = z * z;
+        float v3 = z2.x + z2.y + z2.z;
+        if (v3 > u_bailout2) break;
+        float r = sqrt(v3);
         trapv = min(trapv, max(r, 1e-6));
         dr *= 2.0 * max(r, 1e-6);
 
         vec3 temp = z;
-        if (abs(z.y) < abs(z.z)) { z.y = temp.z; z.z = temp.y; }
+        if (abs(z.y) < abs(z.z)) { z.y = temp.z; z.z = temp.y; float t2 = z2.y; z2.y = z2.z; z2.z = t2; }
         if (z.y > z.z) z.x = -z.x;
-        vec3 z2 = z * z;
-        float v3 = z2.x + z2.y + z2.z;
         float zr = 1.0 - z2.z / max(v3, 1e-9);
         temp.x = (z2.x - z2.y) * zr;
         temp.y = 2.0 * z.x * z.y * zr * u_ms_scaleB;
         temp.z = 2.0 * z.z * sqrt(max(z2.x + z2.y, 1e-9));
-        z = temp + u_ms_symOffset + pos;
+        z = temp + c;
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
@@ -2318,22 +2337,23 @@ float msltoeSym3DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
+    vec3 c = u_ms_symOffset + pos;
     for (int i = 0; i < u_max_iter; i++) {
-        float r = length(z);
-        if (r > u_bailout) break;
+        vec3 z2 = z * z;
+        float v3 = z2.x + z2.y + z2.z;
+        if (v3 > u_bailout2) break;
+        float r = sqrt(v3);
         trapv = min(trapv, max(r, 1e-6));
         dr *= 2.0 * max(r, 1e-6);
 
         vec3 temp = z;
-        if (abs(z.y) < abs(z.z)) { z.y = temp.z; z.z = temp.y; }
+        if (abs(z.y) < abs(z.z)) { z.y = temp.z; z.z = temp.y; float t2 = z2.y; z2.y = z2.z; z2.z = t2; }
         if (z.y > z.z) { z.x = -z.x; z.z = -z.z; }
-        vec3 z2 = z * z;
-        float v3 = z2.x + z2.y + z2.z;
         float zr = 1.0 - z2.z / max(v3, 1e-9);
         temp.x = (z2.x - z2.y) * zr;
         temp.y = 2.0 * z.x * z.y * zr * u_ms_scaleB;
         temp.z = 2.0 * z.z * sqrt(max(z2.x + z2.y, 1e-9));
-        z = temp + u_ms_symOffset + pos;
+        z = temp + c;
         dr += 1.0;
     }
     trap = trapv;
@@ -2346,26 +2366,27 @@ float msltoeSym3V2DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
+    vec3 c = u_ms_symAdd + u_ms_symOffset + pos;
+    float absSym = abs(u_ms_symScale);
     for (int i = 0; i < u_max_iter; i++) {
-        float r = length(z);
-        if (r > u_bailout) break;
+        vec3 z2 = z * z;
+        float rr = z2.x + z2.y + z2.z;
+        if (rr > u_bailout2) break;
+        float r = sqrt(rr);
         trapv = min(trapv, max(r, 1e-6));
         dr *= 2.0 * max(r, 1e-6);
 
-        vec3 z2 = z * z;
-        float rr = z2.x + z2.y + z2.z;
-        float r1 = sqrt(max(rr, 1e-12));
         if (z2.z < z2.y) {
-            float theta = 2.0 * atan(z.y, z.x);
-            float phi = 2.0 * asin(clamp(z.z / r1, -1.0, 1.0));
-            z = rr * vec3(cos(theta)*cos(phi), sin(theta)*cos(phi), -sin(phi));
+            float rxy2 = max(z2.x + z2.y, 1e-12);
+            float f = 1.0 - z2.z / rxy2;
+            z = vec3((z2.x - z2.y) * f, 2.0 * z.x * z.y * f, -2.0 * z.z * sqrt(rxy2));
         } else {
-            float theta = 2.0 * atan(z.z, z.x);
-            float phi = 2.0 * asin(clamp(z.y / r1, -1.0, 1.0));
-            z = rr * vec3(cos(theta)*cos(phi), -sin(phi), sin(theta)*cos(phi));
+            float rxz2 = max(z2.x + z2.z, 1e-12);
+            float f = 1.0 - z2.y / rxz2;
+            z = vec3((z2.x - z2.z) * f, -2.0 * z.y * sqrt(rxz2), 2.0 * z.x * z.z * f);
         }
-        z = z * u_ms_symScale + u_ms_symAdd + u_ms_symOffset + pos;
-        dr *= abs(u_ms_symScale);
+        z = z * u_ms_symScale + c;
+        dr *= absSym;
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
@@ -2377,14 +2398,16 @@ float msltoeSym4DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trapv = max(length(z), 1e-6);
+    vec3 c = u_ms_symAdd + u_ms_symOffset + pos;
+    float lenScale = max(length(u_ms_scale3D), 1e-6);
+    float drScale = 2.0 * lenScale * abs(u_ms_symScale);
     for (int i = 0; i < u_max_iter; i++) {
-        float r = length(z);
-        if (r > u_bailout) break;
+        float zz = dot(z, z);
+        if (zz > u_bailout2) break;
+        float r = sqrt(zz);
         trapv = min(trapv, max(r, 1e-6));
-        dr *= 2.0 * max(r, 1e-6);
 
         z *= u_ms_scale3D;
-        dr *= max(length(u_ms_scale3D), 1e-6);
         if (abs(z.x) < abs(z.z)) { float t = z.x; z.x = z.z; z.z = t; }
         if (abs(z.x) < abs(z.y)) { float t = z.x; z.x = z.y; z.y = t; }
         if (abs(z.y) < abs(z.z)) { float t = z.y; z.y = z.z; z.z = t; }
@@ -2393,9 +2416,8 @@ float msltoeSym4DE(vec3 pos, out float trap) {
 
         float len = max(length(z), 1e-6);
         vec3 temp = vec3(z.x*z.x - z.y*z.y - z.z*z.z, 2.0*z.x*z.y, 2.0*z.x*z.z);
-        z = temp * u_ms_symScale + u_ms_symAdd + u_ms_symOffset + pos;
-        dr *= abs(u_ms_symScale);
-        dr *= len / max(r, 1e-6);
+        z = temp * u_ms_symScale + c;
+        dr *= drScale * len;
     }
     trap = trapv;
     float r = max(length(z), 1e-6);
