@@ -661,6 +661,10 @@ uniform float u_ab_scale, u_ab_scaleVary, u_ab_maxR2, u_ab_minR2p25;
 uniform float u_ab_scaleG1, u_ab_deScale, u_ab_deOffset;
 uniform vec3  u_ab_add111, u_ab_add000, u_ab_scale3D, u_ab_cMult, u_ab_mbOffset;
 uniform int   u_ab_zFold, u_ab_quadEnabled, u_ab_swap, u_ab_addCPixel, u_ab_addC;
+/* Mod11 hot-loop constants, derived on the CPU (see uploadAboxDerived) */
+uniform vec3  u_ab_foldLim, u_ab_foldMul;   /* box fold: z = mul*clamp(z,-lim,lim) - z */
+uniform vec3  u_ab_qLim, u_ab_qLim2, u_ab_qK; /* quad fold: limit, 2*limit, scale3D/(2*limit) */
+uniform float u_ab_minR2, u_ab_absG1;
 uniform float u_as_scale, u_as_scaleVary, u_as_minR, u_as_scale1;
 uniform vec3  u_as_add111, u_as_cMult, u_as_off000, u_as_offA000;
 uniform int   u_as_addC, u_as_cyl;
@@ -2744,65 +2748,36 @@ float bristorbrot4dDE(vec3 pos, out float trap) {
 
 /* ===================== Abox Mod11 ===================== */
 float aboxMod11DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
-    vec4 constC = vec4(pos, 0.0);
+    /* w was always 0 in the original vec4 path, so plain vec3 is exact. */
+    vec3 z = pos;
     float dr = 1.0;
     float actualScale = u_ab_scale;
     float trap2 = 1e20;
-
-    trap2 = dot(z, z);
+    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
 
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
         /* DarkBeam's scale vary */
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
-        /* Tglad box fold (B) */
-        z.x = abs(z.x + u_ab_add111.x) - abs(z.x - u_ab_add111.x) - z.x;
-        z.y = abs(z.y + u_ab_add111.y) - abs(z.y - u_ab_add111.y) - z.y;
-        if (u_ab_zFold == 1)
-            z.z = abs(z.z + u_ab_add111.z) - abs(z.z - u_ab_add111.z) - z.z;
+        /* Tglad box fold (B): |z+a| - |z-a| - z == 2*sign(a)*clamp(z,-|a|,|a|) - z */
+        z = u_ab_foldMul * clamp(z, -u_ab_foldLim, u_ab_foldLim) - z;
 
-        /* Quadratic fold (D) */
+        /* Quadratic fold (D), branch-free: m = max(min(|z|, 2L-|z|), 0) */
         if (u_ab_quadEnabled == 1 && i < u_ab_stopD) {
-            vec3 limit = max(u_ab_add111, vec3(1e-6));
-            vec3 len2 = 2.0 * limit;
-            vec3 tgladS = vec3(1.0) / max(len2, vec3(1e-9));
-            vec3 add = vec3(0.0);
-            if (abs(z.x) < limit.x) add.x = z.x * z.x * tgladS.x;
-            else if (abs(z.x) < len2.x) {
-                float t = len2.x - abs(z.x); add.x = t * t * tgladS.x;
-            }
-            if (abs(z.y) < limit.y) add.y = z.y * z.y * tgladS.y;
-            else if (abs(z.y) < len2.y) {
-                float t = len2.y - abs(z.y); add.y = t * t * tgladS.y;
-            }
-            if (abs(z.z) < limit.z) add.z = z.z * z.z * tgladS.z;
-            else if (abs(z.z) < len2.z) {
-                float t = len2.z - abs(z.z); add.z = t * t * tgladS.z;
-            }
-            add *= u_ab_scale3D;
-            z.x -= sign(z.x) * add.x;
-            z.y -= sign(z.y) * add.y;
-            z.z -= sign(z.z) * add.z;
+            vec3 m = max(min(abs(z), u_ab_qLim2 - abs(z)), 0.0);
+            z -= sign(z) * (m * m * u_ab_qK);
         }
 
         /* optional axis swap */
-        if (u_ab_swap == 1) z = vec4(z.z, z.y, z.x, z.w);
+        if (u_ab_swap == 1) z = z.zyx;
 
-        /* Spherical fold (S) */
-        float para = u_ab_minR2p25;
-        float rr = dot(z, z);
-        z += vec4(u_ab_mbOffset, 0.0);
-        if (rr < para) {
-            float f = u_ab_maxR2 / max(para, 1e-9);
-            z *= f; dr *= f;
-        } else if (rr < u_ab_maxR2) {
-            float f = u_ab_maxR2 / max(rr, 1e-9);
-            z *= f; dr *= f;
-        }
-        z -= vec4(u_ab_mbOffset, 0.0);
+        /* Spherical fold (S): f = maxR2 / clamp(rr, minR2, maxR2)  (needs minR2 <= maxR2).
+           (z+o)*f - o  ==  z*f + o*(f-1) */
+        float f = u_ab_maxR2 / clamp(dot(z, z), u_ab_minR2, u_ab_maxR2);
+        z = z * f + u_ab_mbOffset * (f - 1.0);
+        dr *= f;
 
         /* Scale (A), including DarkBeam's vary */
         z *= actualScale;
@@ -2812,28 +2787,29 @@ float aboxMod11DE(vec3 pos, out float trap) {
             dr = dr * abs(actualScale) + 1.0;
 
         /* Offset */
-        z.xyz += u_ab_add000;
+        z += u_ab_add000;
 
         /* Add c (pixel) */
-        if (u_ab_addCPixel == 1) z.xyz += constC.xyz * u_ab_cMult;
+        if (u_ab_addCPixel == 1) z += pos * u_ab_cMult;
 
         /* Rotation (R) */
-        if (u_ab_rotEnabled == 1) z.xyz = u_ab_rotMat * z.xyz;
+        if (u_ab_rotEnabled == 1) z = u_ab_rotMat * z;
 
         /* Tweak scale (C) */
         if (i >= u_ab_startC && i < u_ab_stopC) {
             z *= u_ab_scaleG1;
-            dr *= abs(u_ab_scaleG1);
+            dr *= u_ab_absG1;
         }
 
         /* Global c addition (cpixel addition, enabled by default) */
-        if (u_ab_addC == 1) z.xyz += constC.xyz;
+        if (u_ab_addC == 1) z += pos;
 
         /* Escape check, matching Mandelbulber (after the iteration and c add) */
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
 
-    float rFinal = max(length(z), 1e-6);
+    float rFinal = max(sqrt(zz), 1e-6);
     trap = max(sqrt(trap2), 1e-6);
     /* Abox is a linear-DE fractal: distance = r / DE */
     return rFinal / max(dr, 1e-6);
@@ -7528,6 +7504,21 @@ void main() {
     u3f(U.u_as_offA000, params.as_offAX, params.as_offAY, params.as_offAZ);
     u1i(U.u_as_addC, params.as_addC ? 1 : 0);
     u1i(U.u_as_cyl, params.as_cyl ? 1 : 0);
+    {
+      /* Derived Mandelbox constants: computed once per frame, not per pixel/iteration. */
+      const a = [params.ab_addX, params.ab_addY, params.ab_addZ];
+      const lim = a.map(Math.abs), mul = a.map(v => 2 * Math.sign(v));
+      if (!params.ab_zFold) { lim[2] = 1e30; mul[2] = 2; }   /* identity on z */
+      u3f(U.u_ab_foldLim, lim[0], lim[1], lim[2]);
+      u3f(U.u_ab_foldMul, mul[0], mul[1], mul[2]);
+      const L = a.map(v => Math.max(v, 1e-6));
+      const sc = [params.ab_scale3DX, params.ab_scale3DY, params.ab_scale3DZ];
+      u3f(U.u_ab_qLim, L[0], L[1], L[2]);
+      u3f(U.u_ab_qLim2, 2 * L[0], 2 * L[1], 2 * L[2]);
+      u3f(U.u_ab_qK, sc[0] / (2 * L[0]), sc[1] / (2 * L[1]), sc[2] / (2 * L[2]));
+      u1f(U.u_ab_minR2, Math.min(params.ab_minR2p25, params.ab_maxR2));
+      u1f(U.u_ab_absG1, Math.abs(params.ab_scaleG1));
+    }
     u1i(U.u_ab_stopD, params.ab_stopD | 0);
     u1i(U.u_ab_startC, params.ab_startC | 0);
     u1i(U.u_ab_stopC, params.ab_stopC | 0);
