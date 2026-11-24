@@ -1997,22 +1997,28 @@ float xenodreambuieV3DE(vec3 pos, out float trap) {
 
 /* ===================== Riemann-Multi ===================== */
 float riemannHoboldDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    vec3 z = pos;
+    float dr = 1.0;
+    float r_safe = 0.0;
+    trap = 1e10;
     for (int i = 0; i < u_max_iter; i++) {
-        r = length(z);
-        if (r > u_bailout) break;
-        float r_safe = max(r, 1e-6);
-        trap = min(trap, r_safe);
-        z *= u_riem_scale / r_safe;
-        float denXY = (z.y - 2.0)*z.y + z.x*z.x + 1.0;
-        if (abs(denXY) < 1e-9) denXY = (denXY >= 0.0 ? 1e-9 : -1e-9);
-        float Kx  = 2.0*z.x*(1.0 - z.y) / denXY;
-        float KyX = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denXY;
+        float zz = dot(z, z);
+        float invR = inversesqrt(max(zz, 1e-12));
+        r_safe = zz * invR;
+        if (zz > u_bailout2) break;
+        trap = min(trap, max(r_safe, 1e-6));
+        z *= u_riem_scale * invR;
+        float ym1 = 1.0 - z.y;
+        float ym1_2 = ym1 * ym1;
+        float denXY = max(ym1_2 + z.x*z.x, 1e-9);
+        float Kx  = 2.0*z.x*ym1 / denXY;
+        float KyX = 1.0 - 2.0*ym1_2 / denXY;
         if (u_riem_enX == 1) {
             for (int n = 0; n < 32; n++) {
                 if (n >= u_riem_cntDXY) break;
                 float tX = Kx, tY = KyX;
-                Kx  = -2.0*tX*tY; KyX = -(tY*tY - tX*tX);
+                Kx  = -2.0*tX*tY;
+                KyX = 2.0*tX*tX - 1.0;
             }
         }
         if (u_riem_enX2 == 1) {
@@ -2025,15 +2031,15 @@ float riemannHoboldDE(vec3 pos, out float trap) {
         }
         float n1x = KyX - 1.0 + u_riem_offA;
         float n1y = -Kx;
-        float denYZ = (z.y - 2.0)*z.y + z.z*z.z + 1.0;
-        if (abs(denYZ) < 1e-9) denYZ = (denYZ >= 0.0 ? 1e-9 : -1e-9);
-        float Kz  = 2.0*z.z*(1.0 - z.y) / denYZ;
-        float KyZ = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denYZ;
+        float denYZ = max(ym1_2 + z.z*z.z, 1e-9);
+        float Kz  = 2.0*z.z*ym1 / denYZ;
+        float KyZ = 1.0 - 2.0*ym1_2 / denYZ;
         if (u_riem_enY == 1) {
             for (int n = 0; n < 32; n++) {
                 if (n >= u_riem_cntDYZ) break;
                 float tZ = Kz, tY = KyZ;
-                Kz  = -2.0*tZ*tY; KyZ = -(tY*tY - tZ*tZ);
+                Kz  = -2.0*tZ*tY;
+                KyZ = 2.0*tZ*tZ - 1.0;
             }
         }
         if (u_riem_enY2 == 1) {
@@ -2051,14 +2057,13 @@ float riemannHoboldDE(vec3 pos, out float trap) {
             n1x = tX*u_riem_cs.x + tZ*u_riem_cs.y;
             n2z = -tX*u_riem_cs.y + tZ*u_riem_cs.x;
         }
-        float num = 2.0 * n1x*n1x * n2z*n2z;
-        float den = (n1x*n1x + n1y*n1y)*n2z*n2z + n1x*n1x*n2y*n2y;
-        if (abs(den) < 1e-9) den = (den >= 0.0 ? 1e-9 : -1e-9);
-        float nt = num / den;
-        z.y = 1.0 - nt;
-        float ry = 1.0 - z.y;
-        z.x = (abs(n1x) < 1e-9) ? 0.0 : n1y * ry / n1x;
-        z.z = (abs(n2z) < 1e-9) ? 0.0 : n2y * ry / n2z;
+        float n1x2 = n1x*n1x;
+        float n2z2 = n2z*n2z;
+        float den = max((n1x2 + n1y*n1y)*n2z2 + n1x2*n2y*n2y, 1e-9);
+        float invDen = 2.0 / den;
+        z.y = 1.0 - n1x2*n2z2*invDen;
+        z.x = n1x*n1y*n2z2*invDen;
+        z.z = n1x2*n2y*n2z*invDen;
         float hp = u_power * 0.5;
         float rp = pow(r_safe, hp - 1.0);
         z *= rp * r_safe;
@@ -2072,37 +2077,42 @@ float riemannHoboldDE(vec3 pos, out float trap) {
             else           dr = 1.0;
         }
     }
-    float r_safe = max(r, 1e-6);
-    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+    float rFinal = max(r_safe, 1e-6);
+    return 0.5 * log(rFinal) * rFinal / max(dr, 1e-6);
 }
 
 /* ===================== Riemann-Pow8 ===================== */
 float riemannHoboldPow8DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    vec3 z = pos;
+    float dr = 1.0;
+    float r_safe = 0.0;
+    trap = 1e10;
+    vec3 cval = (u_riem8_mandelbrotMode == 1) ? pos : u_riem8_adC;
     for (int i = 0; i < u_max_iter; i++) {
-        r = length(z);
-        if (r > u_bailout) break;
-        float r_safe = max(r, 1e-6);
-        trap = min(trap, r_safe);
-        z *= u_riem8_scale / r_safe;
-        float denXY = (z.y - 2.0)*z.y + z.x*z.x + 1.0;
-        if (abs(denXY) < 1e-9) denXY = (denXY >= 0.0 ? 1e-9 : -1e-9);
-        float Kx = 2.0*z.x*(1.0 - z.y) / denXY;
-        float Ky = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denXY;
+        float zz = dot(z, z);
+        float invR = inversesqrt(max(zz, 1e-12));
+        r_safe = zz * invR;
+        if (zz > u_bailout2) break;
+        trap = min(trap, max(r_safe, 1e-6));
+        z *= u_riem8_scale * invR;
+        float ym1 = 1.0 - z.y;
+        float ym1_2 = ym1 * ym1;
+        float denXY = max(ym1_2 + z.x*z.x, 1e-9);
+        float Kx = 2.0*z.x*ym1 / denXY;
+        float Ky = 1.0 - 2.0*ym1_2 / denXY;
         float K2x = -2.0*Kx*Ky;
-        float K2y = -(Ky*Ky - Kx*Kx);
-        Kx  = -2.0*K2x*K2y; Ky  = -(K2y*K2y - K2x*K2x);
-        K2x = -2.0*Kx*Ky;   K2y = -(Ky*Ky - Kx*Kx);
+        float K2y = 2.0*Kx*Kx - 1.0;
+        Kx = -2.0*K2x*K2y; Ky = 2.0*K2x*K2x - 1.0;
+        K2x = -2.0*Kx*Ky;  K2y = 2.0*Kx*Kx - 1.0;
         float n1x = K2y - 1.0 + u_riem8_offA;
         float n1y = -K2x;
-        float denYZ = (z.y - 2.0)*z.y + z.z*z.z + 1.0;
-        if (abs(denYZ) < 1e-9) denYZ = (denYZ >= 0.0 ? 1e-9 : -1e-9);
-        float Kz  = 2.0*z.z*(1.0 - z.y) / denYZ;
-        float Kyz = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denYZ;
+        float denYZ = max(ym1_2 + z.z*z.z, 1e-9);
+        float Kz  = 2.0*z.z*ym1 / denYZ;
+        float Kyz = 1.0 - 2.0*ym1_2 / denYZ;
         float K2z  = -2.0*Kz*Kyz;
-        float K2yz = -(Kyz*Kyz - Kz*Kz);
-        Kz  = -2.0*K2z*K2yz; Kyz  = -(K2yz*K2yz - K2z*K2z);
-        K2z = -2.0*Kz*Kyz;   K2yz = -(Kyz*Kyz - Kz*Kz);
+        float K2yz = 2.0*Kz*Kz - 1.0;
+        Kz = -2.0*K2z*K2yz; Kyz = 2.0*K2z*K2z - 1.0;
+        K2z = -2.0*Kz*Kyz;  K2yz = 2.0*Kz*Kz - 1.0;
         float n2y = -K2z;
         float n2z = K2yz - 1.0 + u_riem8_offB;
         if (u_riem8_angleDeg != 0.0) {
@@ -2110,19 +2120,17 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
             n1x = tX*u_riem8_cs.x + tZ*u_riem8_cs.y;
             n2z = -tX*u_riem8_cs.y + tZ*u_riem8_cs.x;
         }
-        float num = 2.0 * n1x*n1x * n2z*n2z;
-        float den = (n1x*n1x + n1y*n1y)*n2z*n2z + n1x*n1x*n2y*n2y;
-        if (abs(den) < 1e-9) den = (den >= 0.0 ? 1e-9 : -1e-9);
-        float nt = num / den;
-        z.y = 1.0 - nt;
-        float ry = 1.0 - z.y;
-        z.x = (abs(n1x) < 1e-9) ? 0.0 : n1y * ry / n1x;
-        z.z = (abs(n2z) < 1e-9) ? 0.0 : n2y * ry / n2z;
+        float n1x2 = n1x*n1x;
+        float n2z2 = n2z*n2z;
+        float den = max((n1x2 + n1y*n1y)*n2z2 + n1x2*n2y*n2y, 1e-9);
+        float invDen = 2.0 / den;
+        z.y = 1.0 - n1x2*n2z2*invDen;
+        z.x = n1x*n1y*n2z2*invDen;
+        z.z = n1x2*n2y*n2z*invDen;
         float r2 = r_safe * r_safe;
         float r3 = r2 * r_safe;
         float r4 = r2 * r2;
         z *= r4;
-        vec3 cval = (u_riem8_mandelbrotMode == 1) ? pos : u_riem8_adC;
         z += cval;
         if (u_riem8_rotEnabled == 1) z = u_riem8_rotMat * z;
         if (u_riem8_analyticDE == 1) {
@@ -2132,39 +2140,43 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
             dr = (r4 * r3) * dr * 8.0 + 1.0;
         }
     }
-    float r_safe = max(r, 1e-6);
-    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+    float rFinal = max(r_safe, 1e-6);
+    return 0.5 * log(rFinal) * rFinal / max(dr, 1e-6);
 }
 
 /* ===================== Riemann-Pow4 ===================== */
 float riemannHoboldPow4DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    vec3 z = pos;
+    float dr = 1.0;
+    float r_safe = 0.0;
+    trap = 1e10;
     for (int i = 0; i < u_max_iter; i++) {
-        r = length(z);
-        if (r > u_bailout) break;
-        float r_safe = max(r, 1e-6);
-        trap = min(trap, r_safe);
-        z *= u_riem_scale / r_safe;
+        float zz = dot(z, z);
+        float invR = inversesqrt(max(zz, 1e-12));
+        r_safe = zz * invR;
+        if (zz > u_bailout2) break;
+        trap = min(trap, max(r_safe, 1e-6));
+        z *= u_riem_scale * invR;
 
-        float denXY = (z.y - 2.0)*z.y + z.x*z.x + 1.0;
-        if (abs(denXY) < 1e-9) denXY = (denXY >= 0.0 ? 1e-9 : -1e-9);
-        float Kx = 2.0*z.x*(1.0 - z.y) / denXY;
-        float Ky = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denXY;
+        float ym1 = 1.0 - z.y;
+        float ym1_2 = ym1 * ym1;
+        float denXY = max(ym1_2 + z.x*z.x, 1e-9);
+        float Kx = 2.0*z.x*ym1 / denXY;
+        float Ky = 1.0 - 2.0*ym1_2 / denXY;
         float K2x = -2.0*Kx*Ky;
-        float K2y = -(Ky*Ky - Kx*Kx);
+        float K2y = 2.0*Kx*Kx - 1.0;
         Kx = -2.0*K2x*K2y;
-        Ky = -(K2y*K2y - K2x*K2x);
+        Ky = 2.0*K2x*K2x - 1.0;
         float n1x = Ky - 1.0 + u_riem_offA;
         float n1y = -Kx;
 
-        float denYZ = (z.y - 2.0)*z.y + z.z*z.z + 1.0;
-        if (abs(denYZ) < 1e-9) denYZ = (denYZ >= 0.0 ? 1e-9 : -1e-9);
-        float Kz = 2.0*z.z*(1.0 - z.y) / denYZ;
-        float Kyz = 1.0 - 2.0*((z.y - 2.0)*z.y + 1.0) / denYZ;
+        float denYZ = max(ym1_2 + z.z*z.z, 1e-9);
+        float Kz = 2.0*z.z*ym1 / denYZ;
+        float Kyz = 1.0 - 2.0*ym1_2 / denYZ;
         float K2z = -2.0*Kz*Kyz;
-        float K2yz = -(Kyz*Kyz - Kz*Kz);
+        float K2yz = 2.0*Kz*Kz - 1.0;
         Kz = -2.0*K2z*K2yz;
-        Kyz = -(K2yz*K2yz - K2z*K2z);
+        Kyz = 2.0*K2z*K2z - 1.0;
         float n2y = -Kz;
         float n2z = Kyz - 1.0 + u_riem_offB;
 
@@ -2173,14 +2185,13 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
             n1x = tX*u_riem_cs.x + tZ*u_riem_cs.y;
             n2z = -tX*u_riem_cs.y + tZ*u_riem_cs.x;
         }
-        float num = 2.0 * n1x*n1x * n2z*n2z;
-        float den = (n1x*n1x + n1y*n1y)*n2z*n2z + n1x*n1x*n2y*n2y;
-        if (abs(den) < 1e-9) den = (den >= 0.0 ? 1e-9 : -1e-9);
-        float nt = num / den;
-        z.y = 1.0 - nt;
-        float ry = 1.0 - z.y;
-        z.x = (abs(n1x) < 1e-9) ? 0.0 : n1y * ry / n1x;
-        z.z = (abs(n2z) < 1e-9) ? 0.0 : n2y * ry / n2z;
+        float n1x2 = n1x*n1x;
+        float n2z2 = n2z*n2z;
+        float den = max((n1x2 + n1y*n1y)*n2z2 + n1x2*n2y*n2y, 1e-9);
+        float invDen = 2.0 / den;
+        z.y = 1.0 - n1x2*n2z2*invDen;
+        z.x = n1x*n1y*n2z2*invDen;
+        z.z = n1x2*n2y*n2z*invDen;
         float r2 = r_safe * r_safe;
         z *= r2;
         z += u_riem_adC;
@@ -2192,8 +2203,8 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
             dr = (r2 * r_safe) * dr * 4.0 + 1.0;
         }
     }
-    float r_safe = max(r, 1e-6);
-    return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
+    float rFinal = max(r_safe, 1e-6);
+    return 0.5 * log(rFinal) * rFinal / max(dr, 1e-6);
 }
 
 /* ===================== Msltoe Toroidal ===================== */
