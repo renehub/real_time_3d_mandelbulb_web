@@ -2775,7 +2775,7 @@ float aboxMod11DE(vec3 pos, out float trap) {
 
         /* Spherical fold (S): f = maxR2 / clamp(rr, minR2, maxR2)  (needs minR2 <= maxR2).
            (z+o)*f - o  ==  z*f + o*(f-1) */
-        float f = u_ab_maxR2 / clamp(dot(z, z), u_ab_minR2, u_ab_maxR2);
+        float f = u_ab_maxR2 / max(clamp(dot(z, z), u_ab_minR2, u_ab_maxR2), 1e-9);
         z = z * f + u_ab_mbOffset * (f - 1.0);
         dr *= f;
 
@@ -2817,140 +2817,134 @@ float aboxMod11DE(vec3 pos, out float trap) {
 
 /* ===================== Abox Mod1 ===================== */
 float aboxMod1DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
-    vec4 c = vec4(pos, 0.0);
+    /* w was always 0 in the original vec4 path, so plain vec3 is exact. */
+    vec3 z = pos;
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trap2 = dot(z, z);
+    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
+    float trap2 = zz;
+    vec3 addAbs = abs(u_ab_add111);     /* loop-invariant |add111| */
     for (int i = 0; i < u_max_iter; i++) {
-        if (dot(z, z) > u_bailout2) break;
-        trap2 = min(trap2, dot(z, z));
+        if (zz > u_bailout2) break;
+        trap2 = min(trap2, zz);
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
         float fold = 1.0;
-        float fx = u_ab_add111.x, fy = u_ab_add111.y, fz = u_ab_add111.z;
-        z.x = fold - abs(abs(z.x + fx) - fold) - abs(fx);
-        z.y = fold - abs(abs(z.y + fy) - fold) - abs(fy);
-        if (u_ab_zFold == 1) z.z = fold - abs(abs(z.z + fz) - fold) - abs(fz);
+        z.x = fold - abs(abs(z.x + u_ab_add111.x) - fold) - addAbs.x;
+        z.y = fold - abs(abs(z.y + u_ab_add111.y) - fold) - addAbs.y;
+        if (u_ab_zFold == 1) z.z = fold - abs(abs(z.z + u_ab_add111.z) - fold) - addAbs.z;
 
-        float rr = dot(z.xyz, z.xyz);
-        if (rr < u_ab_minR2p25) {
-            float f = u_ab_maxR2 / max(u_ab_minR2p25, 1e-9);
-            z *= f; dr *= f;
-        } else if (rr < u_ab_maxR2) {
-            float f = u_ab_maxR2 / max(rr, 1e-9);
-            z *= f; dr *= f;
-        }
+        /* Spherical fold: f = maxR2 / clamp(rr, minR2, maxR2) */
+        float rr = dot(z, z);
+        float f = u_ab_maxR2 / max(clamp(rr, u_ab_minR2, u_ab_maxR2), 1e-9);
+        z *= f; dr *= f;
         z *= actualScale;
         if (u_ab_analyticDE == 1) dr = dr * abs(actualScale) * u_ab_deScale + u_ab_deOffset;
         else dr = dr * abs(actualScale) + 1.0;
-        if (u_ab_addC == 1) z.xyz += c.xyz;
-        if (u_ab_rotEnabled == 1) z.xyz = u_ab_rotMat * z.xyz;
+        if (u_ab_addC == 1) z += pos;
+        if (u_ab_rotEnabled == 1) z = u_ab_rotMat * z;
+        zz = dot(z, z);
     }
     trap = max(sqrt(trap2), 1e-6);
-    return length(z) / max(dr, 1e-6);
+    return sqrt(zz) / max(dr, 1e-6);
 }
 
 /* ===================== Abox Mod2 ===================== */
 float aboxMod2DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
-    vec4 c = vec4(pos, 0.0);
+    /* w was always 0 in the original vec4 path, so plain vec3 is exact. */
+    vec3 z = pos;
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trap2 = dot(z, z);
+    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
+    float trap2 = zz;
     for (int i = 0; i < u_max_iter; i++) {
-        if (dot(z, z) > u_bailout2) break;
-        trap2 = min(trap2, dot(z, z));
+        if (zz > u_bailout2) break;
+        trap2 = min(trap2, zz);
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
-        z.x = abs(z.x + u_ab_add111.x) - abs(z.x - u_ab_add111.x) - z.x;
-        z.y = abs(z.y + u_ab_add111.y) - abs(z.y - u_ab_add111.y) - z.y;
-        if (u_ab_zFold == 1)
-            z.z = abs(z.z + u_ab_add111.z) - abs(z.z - u_ab_add111.z) - z.z;
+        /* Tglad box fold as a clamp; the derived constants fold away z when disabled. */
+        z = u_ab_foldMul * clamp(z, -u_ab_foldLim, u_ab_foldLim) - z;
 
-        float tempZ = abs(z.z) - 0.5;
-        float rr = z.x * z.x + z.y * z.y;
-        if (tempZ > 0.0) rr += tempZ * tempZ;
+        /* squared radius with the cylindrical z offset, branch-free */
+        float t = max(abs(z.z) - 0.5, 0.0);
+        float rr = z.x * z.x + z.y * z.y + t * t;
 
-        if (rr < u_ab_minR2p25) {
-            float f = u_ab_maxR2 / max(u_ab_minR2p25, 1e-9);
-            z *= f; dr *= f;
-        } else if (rr < u_ab_maxR2) {
-            float f = u_ab_maxR2 / max(rr, 1e-9);
-            z *= f; dr *= f;
-        }
+        /* Spherical fold: f = maxR2 / clamp(rr, minR2, maxR2) */
+        float f = u_ab_maxR2 / max(clamp(rr, u_ab_minR2, u_ab_maxR2), 1e-9);
+        z *= f; dr *= f;
         z *= actualScale;
         dr = dr * abs(actualScale) + 1.0;
-        if (u_ab_addC == 1) z.xyz += c.xyz;
-        if (u_ab_rotEnabled == 1) z.xyz = u_ab_rotMat * z.xyz;
+        if (u_ab_addC == 1) z += pos;
+        if (u_ab_rotEnabled == 1) z = u_ab_rotMat * z;
+        zz = dot(z, z);
     }
     trap = max(sqrt(trap2), 1e-6);
-    return length(z) / max(dr, 1e-6);
+    return sqrt(zz) / max(dr, 1e-6);
 }
 
 /* ===================== Abox MB3D1 ===================== */
 float aboxMB3D1DE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
-    vec4 c = vec4(pos, 0.0);
+    /* w was always 0 in the original vec4 path, so plain vec3 is exact. */
+    vec3 z = pos;
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trap2 = dot(z, z);
+    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
+    float trap2 = zz;
+    vec3 addAbs = abs(u_ab_add111);             /* loop-invariant |add111| */
+    float minRSqr = max(u_ab_minR2p25, 1e-9);   /* loop-invariant */
     for (int i = 0; i < u_max_iter; i++) {
-        if (dot(z, z) > u_bailout2) break;
-        trap2 = min(trap2, dot(z, z));
+        if (zz > u_bailout2) break;
+        trap2 = min(trap2, zz);
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
         float fold = 1.0;
-        float fx = u_ab_add111.x, fy = u_ab_add111.y, fz = u_ab_add111.z;
-        z.x = fold - abs(abs(z.x + fx) - fold) - abs(fx);
-        z.y = fold - abs(abs(z.y + fy) - fold) - abs(fy);
-        if (u_ab_zFold == 1) z.z = fold - abs(abs(z.z + fz) - fold) - abs(fz);
+        z.x = fold - abs(abs(z.x + u_ab_add111.x) - fold) - addAbs.x;
+        z.y = fold - abs(abs(z.y + u_ab_add111.y) - fold) - addAbs.y;
+        if (u_ab_zFold == 1) z.z = fold - abs(abs(z.z + u_ab_add111.z) - fold) - addAbs.z;
 
-        float rr = dot(z.xyz, z.xyz);
-        float m = 1.0;
-        float minRSqr = max(u_ab_minR2p25, 1e-9);
-        if (rr < minRSqr) m = u_ab_scale / minRSqr;
-        else if (rr < 1.0) m = u_ab_scale / max(rr, 1e-9);
-        z *= m;
-        dr *= abs(m);
+        float rr = dot(z, z);
+        /* Three branches collapse to m = scale / max(rr, minRSqr) below max(1, minRSqr). */
+        float m = rr < max(1.0, minRSqr) ? u_ab_scale / max(rr, minRSqr) : 1.0;
+        z *= m; dr *= abs(m);
         z *= actualScale;
         dr = dr * abs(actualScale) + 1.0;
-        if (u_ab_addC == 1) { z.x += c.y; z.y += c.x; z.z += c.z; }
-        if (u_ab_rotEnabled == 1) z.xyz = u_ab_rotMat * z.xyz;
+        if (u_ab_addC == 1) z += pos.yxz;
+        if (u_ab_rotEnabled == 1) z = u_ab_rotMat * z;
+        zz = dot(z, z);
     }
     trap = max(sqrt(trap2), 1e-6);
-    return length(z) / max(dr, 1e-6);
+    return sqrt(zz) / max(dr, 1e-6);
 }
 
 /* ===================== Abox 4D ===================== */
 float abox4dDE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0);
-    vec4 c = vec4(pos, 0.0);
     float dr = 1.0;
     float actualScale = u_ab_scale;
-    float trap2 = dot(z, z);
-    vec4 off1111 = vec4(u_ab_add111, 1.0);
+    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
+    float trap2 = zz;
+    /* loop-invariant 4D box-fold constants (w folds around 1) */
+    vec4 foldLim = vec4(abs(u_ab_add111), 1.0);
+    vec4 foldMul = vec4(2.0 * sign(u_ab_add111), 2.0);
     for (int i = 0; i < u_max_iter; i++) {
-        if (dot(z, z) > u_bailout2) break;
-        trap2 = min(trap2, dot(z, z));
+        if (zz > u_bailout2) break;
+        trap2 = min(trap2, zz);
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
-        z = abs(z + off1111) - abs(z - off1111) - z;
+        z = foldMul * clamp(z, -foldLim, foldLim) - z;
+
+        /* Spherical fold: f = maxR2 / clamp(rr, minR2, maxR2) */
         float rr = dot(z, z);
-        if (rr < u_ab_minR2p25) {
-            float f = u_ab_maxR2 / max(u_ab_minR2p25, 1e-9);
-            z *= f; dr *= f;
-        } else if (rr < u_ab_maxR2) {
-            float f = u_ab_maxR2 / max(rr, 1e-9);
-            z *= f; dr *= f;
-        }
+        float f = u_ab_maxR2 / max(clamp(rr, u_ab_minR2, u_ab_maxR2), 1e-9);
+        z *= f; dr *= f;
         z *= actualScale;
         dr = dr * abs(actualScale) + 1.0;
-        z += c;
+        z.xyz += pos;
         z.xyz += u_ab_add000;
+        zz = dot(z, z);
     }
     trap = max(sqrt(trap2), 1e-6);
-    return length(z) / max(dr, 1e-6);
+    return sqrt(zz) / max(dr, 1e-6);
 }
 
 /* ===================== Amazing Surf ===================== */
