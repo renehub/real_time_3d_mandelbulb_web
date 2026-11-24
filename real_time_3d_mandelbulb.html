@@ -1879,25 +1879,31 @@ float mandelbulbVaryPowerDE(vec3 pos, out float trap) {
 
 /* ===================== Benesi ===================== */
 float benesiDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float r = 0.0; trap = 1e10;
+    vec3 z = pos;
+    float dr = 1.0;
+    float r2 = 0.0;
+    trap = 1e10;
     for (int i = 0; i < u_max_iter; i++) {
-        r = length(z);
-        if (r > u_bailout) break;
+        vec3 zz = z * z;
+        float r1 = zz.y + zz.z;
+        r2 = zz.x + r1;
+        if (r2 > u_bailout2) break;
+        float r = sqrt(r2);
         float r_safe = max(r, 1e-6);
         trap = min(trap, r_safe);
         dr = dr * 2.0 * r_safe + 1.0;
-        vec3 zz = z * z;
-        float r1 = zz.y + zz.z;
-        float tp = sqrt(max(r1, 1e-12));
+        float r1safe = max(r1, 1e-12);
+        float invTp = inversesqrt(r1safe);
+        float tp = r1safe * invTp;
+        float f = -2.0 * abs(z.x) * invTp;
+        float tx = zz.x - r1 + u_offset.x;
         vec3 t;
-        if (z.x < tp) t.x = zz.x - r1 + u_offset.x;
-        else          t.x = -zz.x + r1 - u_offset.x;
-        float f = -1.0 / tp * 2.0 * abs(z.x);
+        t.x = (z.x < tp) ? tx : -tx;
         t.y = f * (zz.y - zz.z) + u_offset.y;
         t.z = f * 2.0 * z.y * z.z + u_offset.z;
         z = t;
     }
-    float r_safe = max(r, 1e-6);
+    float r_safe = max(sqrt(r2), 1e-6);
     return 0.5 * log(r_safe) * r_safe / max(dr, 1e-6);
 }
 
@@ -2624,15 +2630,20 @@ float aexionDE(vec3 pos, out float trap) {
 
 /* ===================== Benesi Pwr2 Mandelbulb ===================== */
 float benesiPwr2MandelbulbDE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0);
-    vec4 c = vec4(pos, 0.0);
+    vec3 z = pos;
+    vec3 c = pos;
     float dr = 1.0;
-    float r = length(pos);
     float trapv = 1e10;
+    vec3 addC = c * u_b_multA;
+    vec3 treeC = c * u_b_mult100;
+    vec3 prismShift = u_b_mult000 * vec3(SQRT_3_4, 1.5, 1.5);
+    bool t1Unity = all(equal(u_b_scale222, vec3(1.0)));
 
     for (int i = 0; i < u_max_iter; i++) {
-        float zl = length(z);
-        if (zl > u_bailout) break;
+        vec3 zzTop = z * z;
+        float zzLen = zzTop.x + zzTop.y + zzTop.z;
+        if (zzLen > u_bailout2) break;
+        float zl = sqrt(zzLen);
         trapv = min(trapv, max(zl, 1e-6));
 
         if (u_b_prismEnabled == 1 && i >= u_b_startP && i < u_b_stopP) {
@@ -2643,7 +2654,7 @@ float benesiPwr2MandelbulbDE(vec3 pos, out float trap) {
             z.x -= t * -SQRT_3;
             z.y = abs(z.y - t);
             if (z.y > z.z) { float tt = z.y; z.y = z.z; z.z = tt; }
-            z.xyz -= u_b_mult000 * vec3(SQRT_3_4, 1.5, 1.5);
+            z -= prismShift;
             if (z.z > z.x) { float tt = z.z; z.z = z.x; z.x = tt; }
             if (z.x > 0.0) {
                 z.y = max(0.0, z.y);
@@ -2653,77 +2664,79 @@ float benesiPwr2MandelbulbDE(vec3 pos, out float trap) {
 
         if (u_b_t1Enabled == 1 && i >= u_b_startT1 && i < u_b_stopT1) {
             float tempXZ = z.x * SQRT_2_3 - z.z * SQRT_1_3;
-            z = vec4(
+            z = vec3(
                 (tempXZ - z.y) * SQRT_1_2,
                 (tempXZ + z.y) * SQRT_1_2,
-                z.x * SQRT_1_3 + z.z * SQRT_2_3,
-                z.w);
-            float tempL = length(z);
-            z = abs(z) * vec4(u_b_scale222.x, u_b_scale222.y, u_b_scale222.z, 1.0);
-            float avgScale = length(z) / max(tempL, 1e-21);
-            dr = dr * avgScale + 1.0;
-            if (u_b_t1RotEnabled == 1) z.xyz = u_b_rot1Mat * z.xyz;
+                z.x * SQRT_1_3 + z.z * SQRT_2_3);
+            if (t1Unity) {
+                z = abs(z);
+                dr += 1.0;
+            } else {
+                float tempL = length(z);
+                z = abs(z) * u_b_scale222;
+                float avgScale = length(z) / max(tempL, 1e-21);
+                dr = dr * avgScale + 1.0;
+            }
+            if (u_b_t1RotEnabled == 1) z = u_b_rot1Mat * z;
             tempXZ = (z.y + z.x) * SQRT_1_2;
-            z = vec4(
+            z = vec3(
                 z.z * SQRT_1_3 + tempXZ * SQRT_2_3,
                 (z.y - z.x) * SQRT_1_2,
-                z.z * SQRT_2_3 - tempXZ * SQRT_1_3,
-                z.w);
-            z.xyz -= u_b_off200;
+                z.z * SQRT_2_3 - tempXZ * SQRT_1_3);
+            z -= u_b_off200;
         }
 
         if (u_b_benOriginalEnabled == 1 && i >= u_b_startF && i < u_b_stopF) {
-            vec3 zz = vec3(z.x*z.x, z.y*z.y, z.z*z.z);
+            vec3 zz = z * z;
             float rrYZ = zz.y + zz.z;
-            float lenYZ = sqrt(max(rrYZ, 1e-21));
+            float r1safe = max(rrYZ, 1e-21);
+            float invLenYZ = inversesqrt(r1safe);
+            float lenYZ = r1safe * invLenYZ;
             float temp = zz.x + rrYZ;
-            r = sqrt(temp);
-            dr = dr * 2.0 * r;
-            vec4 newZ = z;
+            dr = dr * 2.0 * sqrt(temp);
+            vec3 newZ = z;
             temp = zz.x - rrYZ;
-            newZ.x = -sign(c.x) * temp;
-            if (z.x < lenYZ) newZ.x = temp;
-            float rYZ = -1.0 / max(lenYZ, 1e-21) * 2.0 * abs(z.x);
+            newZ.x = (z.x < lenYZ) ? temp : -sign(c.x) * temp;
+            float rYZ = -2.0 * abs(z.x) * invLenYZ;
             newZ.y = rYZ * (zz.y - zz.z);
             newZ.z = rYZ * 2.0 * z.y * z.z;
-            vec3 addC = vec3(c.x * u_b_multA.x, c.y * u_b_multA.y, c.z * u_b_multA.z);
-            z = newZ + vec4(addC, 0.0);
+            z = newZ + addC;
         }
 
         if (u_b_treeEnabled == 1 && i >= u_b_startC && i < u_b_stopC) {
-            vec3 zz = vec3(z.x*z.x, z.y*z.y, z.z*z.z);
-            r = sqrt(max(zz.x + zz.y + zz.z, 1e-21));
+            vec3 zz = z * z;
+            float rr = zz.x + zz.y + zz.z;
+            float r = sqrt(max(rr, 1e-21));
             dr = r * dr * 2.0 + 1.0;
             float t = 1.0;
             float temp = zz.y + zz.z;
-            if (temp > 0.0) t = 2.0 * z.x / sqrt(temp);
+            if (temp > 0.0) t = 2.0 * z.x * inversesqrt(temp);
             temp = z.z;
             z.x = zz.x - zz.y - zz.z;
             z.y = 2.0 * t * z.y * temp;
             z.z = t * (zz.y - zz.z);
-            vec4 tempC = vec4(c.x * u_b_mult100.x, c.y * u_b_mult100.y, c.z * u_b_mult100.z, 0.0);
+            vec3 tempC = treeC;
             if (u_b_altSwapEnabled == 1) {
-                if ((i & 1) == 0) tempC = vec4(tempC.x, tempC.z, tempC.y, tempC.w);
-            } else tempC = vec4(tempC.x, tempC.z, tempC.y, tempC.w);
+                if ((i & 1) == 0) tempC = tempC.xzy;
+            } else tempC = tempC.xzy;
             z += tempC;
         }
 
         if (u_b_cylEnabled == 1 && i >= u_b_startD && i < u_b_stopD) {
-            vec4 zw = vec4(
+            vec3 zw = vec3(
                 z.x * cos(z.y * u_b_scale1),
                 z.x * sin(z.y * u_b_scale1),
-                z.z * u_b_scaleC1,
-                z.w);
+                z.z * u_b_scaleC1);
             zw *= u_b_scaleA1;
             z = zw;
             dr *= abs(u_b_scaleA1);
         }
 
         if (u_b_juliaModeEnabled == 1 && i >= u_b_startE && i < u_b_stopE) {
-            z.xyz += u_b_off000;
+            z += u_b_off000;
         }
 
-        if (u_b_rot2Enabled == 1) z.xyz = u_b_rot2Mat * z.xyz;
+        if (u_b_rot2Enabled == 1) z = u_b_rot2Mat * z;
 
         if (u_b_anDEEnabled == 1) dr = dr * u_b_anDEscale + u_b_anDEoff;
     }
