@@ -517,6 +517,14 @@ Thanks buddhi1980!
   /* Two variants are exact DE duplicates; share their compiled program to
      avoid a redundant shader compile. */
   const PROGRAM_ALIAS = { 35: 34, 112: 111 };
+  const FAST_TRAP_FNS = {
+    16: ['kleinianPseudoFast', 'kleinianPseudoTrap'],
+    17: ['kleinianMod1Fast', 'kleinianMod1Trap'],
+    18: ['kleinianPseudoFast', 'kleinianPseudoTrap'],
+    19: ['kleinianMod3Fast', 'kleinianMod3Trap'],
+    20: ['kleinianMod4Fast', 'kleinianMod4Trap'],
+    24: ['kleinian4dFast', 'kleinian4dTrap'],
+  };
 
   /* Build the picker from the registry so the options can never drift
      from the DE mapping. Groups must be contiguous in the list. */
@@ -3552,83 +3560,557 @@ float kleinianPseudoTrap(vec3 pos) {
     }
     return max(sqrt(trap2), 1e-6);
 }
+
+float kleinianMod1Fast(vec3 pos) {
+    vec3 z = pos;
+    float dr = 1.0;
+    float zz;
+    vec3 csize = u_k_csize;
+    vec3 negCsize = -csize;
+    float minR05 = u_k_minR05;
+    float tweak = u_k_tweak;
+    float onePlusTweak = 1.0 + tweak;
+    float scaleB1 = u_k_scaleB1;
+    float absScaleB1 = abs(scaleB1);
+    bool unityScale = (scaleB1 == 1.0);
+
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z *= scaleB1;
+            dr *= absScaleB1;
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+            } else {
+                dr *= onePlusTweak;
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z *= scaleB1;
+            dr *= absScaleB1;
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                dr *= onePlusTweak;
+                if (zz > u_bailout2) break;
+                if (onePlusTweak > 0.0 && unityScale && all(lessThanEqual(abs(z), csize))) {
+                    int rem = u_max_iter - 1 - i;
+                    if (rem > 0 && tweak != 0.0) {
+                        dr *= pow(onePlusTweak, float(rem));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    float rxy = length(z.xy);
+    float invR = inversesqrt(max(zz, 1e-18));
+    return max(rxy - u_k_anDEscale, rxy * abs(z.z) * invR) / max(dr, 1e-9);
+}
+
+float kleinianMod1Trap(vec3 pos) {
+    vec3 z = pos;
+    float trap2 = 1e20;
+    float zz = dot(z, z);
+    vec3 csize = u_k_csize;
+    vec3 negCsize = -csize;
+    float minR05 = u_k_minR05;
+    float scaleB1 = u_k_scaleB1;
+    bool unityScale = (scaleB1 == 1.0);
+
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z *= scaleB1;
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                z *= minR05 / max(zz, 1e-9);
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z *= scaleB1;
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                if (zz > u_bailout2) break;
+                if (unityScale && all(lessThanEqual(abs(z), csize))) {
+                    if (i + 1 < u_max_iter) trap2 = min(trap2, zz);
+                    break;
+                }
+            }
+        }
+    }
+    return max(sqrt(trap2), 1e-6);
+}
+
+float kleinianMod3Fast(vec3 pos) {
+    vec3 z = pos;
+    float dr = 1.0;
+    float zz;
+    vec3 csize = u_k_csize;
+    vec3 negCsize = -csize;
+    float minR05 = u_k_minR05;
+
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k;
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                if (zz > u_bailout2) break;
+                if (all(lessThanEqual(abs(z), csize))) {
+                    break;
+                }
+            }
+        }
+    }
+    vec3 z2 = z * z;
+    float d1 = sqrt(min(min(z2.x + z2.y, z2.y + z2.z), z2.z + z2.x));
+    d1 -= u_k_offsetR0;
+    float d2 = abs(z.z);
+    float de0 = min(d1, d2);
+    return 0.5 * (de0 - u_k_offset0) / max(dr, 1e-9);
+}
+
+float kleinianMod3Trap(vec3 pos) {
+    vec3 z = pos;
+    float trap2 = 1e20;
+    float zz = dot(z, z);
+    vec3 csize = u_k_csize;
+    vec3 negCsize = -csize;
+    float minR05 = u_k_minR05;
+
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                z *= minR05 / max(zz, 1e-9);
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                if (zz > u_bailout2) break;
+                if (all(lessThanEqual(abs(z), csize))) {
+                    if (i + 1 < u_max_iter) trap2 = min(trap2, zz);
+                    break;
+                }
+            }
+        }
+    }
+    return max(sqrt(trap2), 1e-6);
+}
+
+float kleinianMod4Fast(vec3 pos) {
+    vec3 z = pos;
+    float dr = 1.0;
+    float zz;
+    vec3 csize = u_k_csize;
+    float minR05 = u_k_minR05;
+    float tweak = u_k_tweak;
+    float onePlusTweak = 1.0 + tweak;
+    bool csizePositive = all(greaterThanEqual(csize, vec3(0.0)));
+
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            z = abs(z + csize) - abs(z - csize) - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+            } else {
+                dr *= onePlusTweak;
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            z = abs(z + csize) - abs(z - csize) - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                dr *= onePlusTweak;
+                if (zz > u_bailout2) break;
+                if (onePlusTweak > 0.0 && csizePositive && all(lessThanEqual(abs(z), csize))) {
+                    int rem = u_max_iter - 1 - i;
+                    if (rem > 0 && tweak != 0.0) {
+                        dr *= pow(onePlusTweak, float(rem));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    float rxy = length(z.xy);
+    float invR = inversesqrt(max(zz, 1e-18));
+    return max(rxy - u_k_anDEscale, rxy * abs(z.z) * invR) / max(dr, 1e-9);
+}
+
+float kleinianMod4Trap(vec3 pos) {
+    vec3 z = pos;
+    float trap2 = 1e20;
+    float zz = dot(z, z);
+    vec3 csize = u_k_csize;
+    float minR05 = u_k_minR05;
+    bool csizePositive = all(greaterThanEqual(csize, vec3(0.0)));
+
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            z = abs(z + csize) - abs(z - csize) - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                z *= minR05 / max(zz, 1e-9);
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            z = abs(z + csize) - abs(z - csize) - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                if (zz > u_bailout2) break;
+                if (csizePositive && all(lessThanEqual(abs(z), csize))) {
+                    if (i + 1 < u_max_iter) trap2 = min(trap2, zz);
+                    break;
+                }
+            }
+        }
+    }
+    return max(sqrt(trap2), 1e-6);
+}
+
+float kleinian4dFast(vec3 pos) {
+    vec4 z = vec4(pos, 0.0);
+    float dr = 1.0;
+    float zz;
+    vec4 off = u_k_off1111;
+    float scale1 = u_k_scale1;
+    float tweak = u_k_tweak;
+    float onePlusTweak = 1.0 + tweak;
+    bool offPositive = all(greaterThanEqual(off, vec4(0.0)));
+
+    for (int i = 0; i < u_max_iter; i++) {
+        z = abs(z + off) - abs(z - off) - z;
+        zz = dot(z, z);
+        if (scale1 > zz) {
+            float k = scale1 / max(zz, 1e-9);
+            z *= k;
+            dr *= k + tweak;
+            zz *= k * k;
+            if (zz > u_bailout2) break;
+        } else {
+            dr *= onePlusTweak;
+            if (zz > u_bailout2) break;
+            if (onePlusTweak > 0.0 && offPositive && all(lessThanEqual(abs(z), off))) {
+                int rem = u_max_iter - 1 - i;
+                if (rem > 0 && tweak != 0.0) {
+                    dr *= pow(onePlusTweak, float(rem));
+                }
+                break;
+            }
+        }
+    }
+    vec4 z2 = z * z;
+    float d1 = sqrt(z2.x + z2.y + z2.w);
+    d1 -= u_k_offsetR0;
+    float d2 = abs(z.z);
+    float de0 = min(d1, d2);
+    return 0.5 * (de0 - u_k_offset0) / max(dr, 1e-9);
+}
+
+float kleinian4dTrap(vec3 pos) {
+    vec4 z = vec4(pos, 0.0);
+    float trap2 = 1e20;
+    float zz = dot(z, z);
+    vec4 off = u_k_off1111;
+    float scale1 = u_k_scale1;
+    bool offPositive = all(greaterThanEqual(off, vec4(0.0)));
+
+    for (int i = 0; i < u_max_iter; i++) {
+        trap2 = min(trap2, zz);
+        z = abs(z + off) - abs(z - off) - z;
+        zz = dot(z, z);
+        if (scale1 > zz) {
+            float k = scale1 / max(zz, 1e-9);
+            z *= k;
+            zz *= k * k;
+            if (zz > u_bailout2) break;
+        } else {
+            if (zz > u_bailout2) break;
+            if (offPositive && all(lessThanEqual(abs(z), off))) {
+                if (i + 1 < u_max_iter) trap2 = min(trap2, zz);
+                break;
+            }
+        }
+    }
+    return max(sqrt(trap2), 1e-6);
+}
 #endif
 
 float kleinianMod1DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trap2 = 1e20;
-    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
-    for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, zz);
+    float zz = dot(z, z);
+    vec3 csize = u_k_csize;
+    vec3 negCsize = -csize;
+    float minR05 = u_k_minR05;
+    float tweak = u_k_tweak;
+    float onePlusTweak = 1.0 + tweak;
+    float scaleB1 = u_k_scaleB1;
+    float absScaleB1 = abs(scaleB1);
+    bool unityScale = (scaleB1 == 1.0);
 
-        /* inlined kPseudoCore(z, dr, true, true): box fold + spherical invert */
-        vec3 tempZ = clamp(z, -u_k_csize, u_k_csize);
-        z *= u_k_scaleB1;
-        dr *= abs(u_k_scaleB1);
-        z = tempZ * 2.0 - z;
-        zz = dot(z, z);
-        float k = max(u_k_minR05 / max(zz, 1e-9), 1.0);
-        z *= k;
-        dr *= k + u_k_tweak;
-        z += u_k_add000;
-
-        zz = dot(z, z);
-        if (zz > u_bailout2) break;
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z *= scaleB1;
+            dr *= absScaleB1;
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+            } else {
+                dr *= onePlusTweak;
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z *= scaleB1;
+            dr *= absScaleB1;
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                dr *= onePlusTweak;
+                if (zz > u_bailout2) break;
+                if (onePlusTweak > 0.0 && unityScale && all(lessThanEqual(abs(z), csize))) {
+                    int rem = u_max_iter - 1 - i;
+                    if (rem > 0) {
+                        trap2 = min(trap2, zz);
+                        if (tweak != 0.0) {
+                            dr *= pow(onePlusTweak, float(rem));
+                        }
+                    }
+                    break;
+                }
+            }
+        }
     }
     trap = max(sqrt(trap2), 1e-6);
-    /* inlined kPKDistance with the tracked zz */
     float rxy = length(z.xy);
-    float r = max(sqrt(zz), 1e-9);
-    return max(rxy - u_k_anDEscale, abs(rxy * z.z) / r) / max(dr, 1e-9);
+    float invR = inversesqrt(max(zz, 1e-18));
+    return max(rxy - u_k_anDEscale, rxy * abs(z.z) * invR) / max(dr, 1e-9);
 }
 
 float kleinianMod2DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trap2 = 1e20;
-    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
-    for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, zz);
+    float zz = dot(z, z);
+    vec3 csize = u_k_csize;
+    vec3 negCsize = -csize;
+    float minR05 = u_k_minR05;
+    float tweak = u_k_tweak;
+    float onePlusTweak = 1.0 + tweak;
 
-        /* inlined kPseudoCore(z, dr, false, true): box fold + spherical invert */
-        vec3 tempZ = clamp(z, -u_k_csize, u_k_csize);
-        z = tempZ * 2.0 - z;
-        zz = dot(z, z);
-        float k = max(u_k_minR05 / max(zz, 1e-9), 1.0);
-        z *= k;
-        dr *= k + u_k_tweak;
-        z += u_k_add000;
-
-        zz = dot(z, z);
-        if (zz > u_bailout2) break;
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+            } else {
+                dr *= onePlusTweak;
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                dr *= onePlusTweak;
+                if (zz > u_bailout2) break;
+                if (onePlusTweak > 0.0 && all(lessThanEqual(abs(z), csize))) {
+                    int rem = u_max_iter - 1 - i;
+                    if (rem > 0) {
+                        trap2 = min(trap2, zz);
+                        if (tweak != 0.0) {
+                            dr *= pow(onePlusTweak, float(rem));
+                        }
+                    }
+                    break;
+                }
+            }
+        }
     }
     trap = max(sqrt(trap2), 1e-6);
-    /* inlined kPKDistance with the tracked zz */
     float rxy = length(z.xy);
-    float r = max(sqrt(zz), 1e-9);
-    return max(rxy - u_k_anDEscale, abs(rxy * z.z) / r) / max(dr, 1e-9);
+    float invR = inversesqrt(max(zz, 1e-18));
+    return max(rxy - u_k_anDEscale, rxy * abs(z.z) * invR) / max(dr, 1e-9);
 }
 
 float kleinianMod3DE(vec3 pos, out float trap) {
     vec3 z = pos;
     float dr = 1.0;
     float trap2 = 1e20;
-    float zz = dot(z, z);               /* reused: trap and bailout */
-    for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, zz);
+    float zz = dot(z, z);
+    vec3 csize = u_k_csize;
+    vec3 negCsize = -csize;
+    float minR05 = u_k_minR05;
 
-        /* inlined kPseudoCore(z, dr, false, false): box fold + spherical invert */
-        vec3 tempZ = clamp(z, -u_k_csize, u_k_csize);
-        z = tempZ * 2.0 - z;
-        zz = dot(z, z);
-        float k = max(u_k_minR05 / max(zz, 1e-9), 1.0);
-        z *= k;
-        dr *= k;
-        z += u_k_add000;
-
-        zz = dot(z, z);
-        if (zz > u_bailout2) break;
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k;
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            vec3 tempZ = clamp(z, negCsize, csize);
+            z = tempZ * 2.0 - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                if (zz > u_bailout2) break;
+                if (all(lessThanEqual(abs(z), csize))) {
+                    if (i + 1 < u_max_iter) trap2 = min(trap2, zz);
+                    break;
+                }
+            }
+        }
     }
     trap = max(sqrt(trap2), 1e-6);
 
@@ -3641,20 +4123,64 @@ float kleinianMod3DE(vec3 pos, out float trap) {
 }
 
 float kleinianMod4DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
-    for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+    vec3 z = pos;
+    float dr = 1.0;
+    float trap2 = 1e20;
+    float zz = dot(z, z);
+    vec3 csize = u_k_csize;
+    float minR05 = u_k_minR05;
+    float tweak = u_k_tweak;
+    float onePlusTweak = 1.0 + tweak;
+    bool csizePositive = all(greaterThanEqual(csize, vec3(0.0)));
 
-        z = abs(z + u_k_csize) - abs(z - u_k_csize) - z;
-        float k = max(u_k_minR05 / max(dot(z, z), 1e-9), 1.0);
-        z *= k;
-        dr *= k + u_k_tweak;
-        z += u_k_add000;
-
-        if (dot(z, z) > u_bailout2) break;
+    if (any(notEqual(u_k_add000, vec3(0.0)))) {
+        vec3 add000 = u_k_add000;
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            z = abs(z + csize) - abs(z - csize) - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+            } else {
+                dr *= onePlusTweak;
+            }
+            z += add000;
+            zz = dot(z, z);
+            if (zz > u_bailout2) break;
+        }
+    } else {
+        for (int i = 0; i < u_max_iter; i++) {
+            trap2 = min(trap2, zz);
+            z = abs(z + csize) - abs(z - csize) - z;
+            zz = dot(z, z);
+            if (zz < minR05) {
+                float k = minR05 / max(zz, 1e-9);
+                z *= k;
+                dr *= k + tweak;
+                zz *= k * k;
+                if (zz > u_bailout2) break;
+            } else {
+                dr *= onePlusTweak;
+                if (zz > u_bailout2) break;
+                if (onePlusTweak > 0.0 && csizePositive && all(lessThanEqual(abs(z), csize))) {
+                    int rem = u_max_iter - 1 - i;
+                    if (rem > 0) {
+                        trap2 = min(trap2, zz);
+                        if (tweak != 0.0) {
+                            dr *= pow(onePlusTweak, float(rem));
+                        }
+                    }
+                    break;
+                }
+            }
+        }
     }
     trap = max(sqrt(trap2), 1e-6);
-    return kPKDistance(z, dr);
+    float rxy = length(z.xy);
+    float invR = inversesqrt(max(zz, 1e-18));
+    return max(rxy - u_k_anDEscale, rxy * abs(z.z) * invR) / max(dr, 1e-9);
 }
 
 float kleinianMod5DE(vec3 pos, out float trap) {
@@ -3750,21 +4276,45 @@ float kleinianMod7DE(vec3 pos, out float trap) {
 }
 
 float kleinian4dDE(vec3 pos, out float trap) {
-    vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
+    vec4 z = vec4(pos, 0.0);
+    float dr = 1.0;
+    float trap2 = 1e20;
+    float zz = dot(z, z);
+    vec4 off = u_k_off1111;
+    float scale1 = u_k_scale1;
+    float tweak = u_k_tweak;
+    float onePlusTweak = 1.0 + tweak;
+    bool offPositive = all(greaterThanEqual(off, vec4(0.0)));
+
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
-
-        z = abs(z + u_k_off1111) - abs(z - u_k_off1111) - z;
-        float k = max(u_k_scale1 / max(dot(z, z), 1e-9), 1.0);
-        z *= k;
-        dr *= k + u_k_tweak;
-
-        if (dot(z, z) > u_bailout2) break;
+        trap2 = min(trap2, zz);
+        z = abs(z + off) - abs(z - off) - z;
+        zz = dot(z, z);
+        if (scale1 > zz) {
+            float k = scale1 / max(zz, 1e-9);
+            z *= k;
+            dr *= k + tweak;
+            zz *= k * k;
+            if (zz > u_bailout2) break;
+        } else {
+            dr *= onePlusTweak;
+            if (zz > u_bailout2) break;
+            if (onePlusTweak > 0.0 && offPositive && all(lessThanEqual(abs(z), off))) {
+                int rem = u_max_iter - 1 - i;
+                if (rem > 0) {
+                    trap2 = min(trap2, zz);
+                    if (tweak != 0.0) {
+                        dr *= pow(onePlusTweak, float(rem));
+                    }
+                }
+                break;
+            }
+        }
     }
     trap = max(sqrt(trap2), 1e-6);
 
-    vec4 zz = z * z;
-    float d1 = sqrt(zz.x + zz.y + zz.w);
+    vec4 z2 = z * z;
+    float d1 = sqrt(z2.x + z2.y + z2.w);
     d1 -= u_k_offsetR0;
     float d2 = abs(z.z);
     float de0 = min(d1, d2);
@@ -5256,7 +5806,8 @@ void main() {
     const fn = DE_FN_BY_NAME[name];
     if (!fn) throw new Error('Missing DE function: ' + name);
 
-    const fastMarchTrap = (id === 16);
+    const fast = FAST_TRAP_FNS[id];
+    const fastMarchTrap = !!fast;
     const mbTweak = (id === 0 || id === 58 || (id >= 80 && id <= 113));
     const defines = (fastMarchTrap ? '#define FAST_MARCH_TRAP\n' : '') +
                     (shaderShadows ? '#define ENABLE_SHADOWS\n' : '') +
@@ -5265,10 +5816,10 @@ void main() {
       ? FRAG_PREFIX.replace('#version 300 es\n', '#version 300 es\n' + defines)
       : FRAG_PREFIX;
 
-    if (fastMarchTrap) {
+    if (fast) {
       return prefix + '\n' +
-        'float sceneFastDE(vec3 p) {\n    return kleinianPseudoFast(p);\n}\n' +
-        'float sceneTrap(vec3 p) {\n    return kleinianPseudoTrap(p);\n}\n' +
+        'float sceneFastDE(vec3 p) {\n    return ' + fast[0] + '(p);\n}\n' +
+        'float sceneTrap(vec3 p) {\n    return ' + fast[1] + '(p);\n}\n' +
         FRAG_SUFFIX;
     }
 
