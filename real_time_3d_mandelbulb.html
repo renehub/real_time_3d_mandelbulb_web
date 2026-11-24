@@ -3416,48 +3416,85 @@ float kleinianPseudoDE(vec3 pos, out float trap) {
 }
 
 float kleinianMod1DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    vec3 z = pos;
+    float dr = 1.0;
+    float trap2 = 1e20;
+    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
-        kPseudoCore(z, dr, true, true);
+        /* inlined kPseudoCore(z, dr, true, true): box fold + spherical invert */
+        vec3 tempZ = clamp(z, -u_k_csize, u_k_csize);
+        z *= u_k_scaleB1;
+        dr *= abs(u_k_scaleB1);
+        z = tempZ * 2.0 - z;
+        zz = dot(z, z);
+        float k = max(u_k_minR05 / max(zz, 1e-9), 1.0);
+        z *= k;
+        dr *= k + u_k_tweak;
         z += u_k_add000;
 
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
     trap = max(sqrt(trap2), 1e-6);
-    return kPKDistance(z, dr);
+    /* inlined kPKDistance with the tracked zz */
+    float rxy = length(z.xy);
+    float r = max(sqrt(zz), 1e-9);
+    return max(rxy - u_k_anDEscale, abs(rxy * z.z) / r) / max(dr, 1e-9);
 }
 
 float kleinianMod2DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    vec3 z = pos;
+    float dr = 1.0;
+    float trap2 = 1e20;
+    float zz = dot(z, z);               /* reused: trap, bailout, final radius */
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
-        kPseudoCore(z, dr, false, true);
+        /* inlined kPseudoCore(z, dr, false, true): box fold + spherical invert */
+        vec3 tempZ = clamp(z, -u_k_csize, u_k_csize);
+        z = tempZ * 2.0 - z;
+        zz = dot(z, z);
+        float k = max(u_k_minR05 / max(zz, 1e-9), 1.0);
+        z *= k;
+        dr *= k + u_k_tweak;
         z += u_k_add000;
 
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
     trap = max(sqrt(trap2), 1e-6);
-    return kPKDistance(z, dr);
+    /* inlined kPKDistance with the tracked zz */
+    float rxy = length(z.xy);
+    float r = max(sqrt(zz), 1e-9);
+    return max(rxy - u_k_anDEscale, abs(rxy * z.z) / r) / max(dr, 1e-9);
 }
 
 float kleinianMod3DE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trap2 = 1e20;
+    vec3 z = pos;
+    float dr = 1.0;
+    float trap2 = 1e20;
+    float zz = dot(z, z);               /* reused: trap and bailout */
     for (int i = 0; i < u_max_iter; i++) {
-        trap2 = min(trap2, dot(z, z));
+        trap2 = min(trap2, zz);
 
-        /* box offset (constantMultiplier000 defaults to 0, so no-op) */
-        kPseudoCore(z, dr, false, false);
+        /* inlined kPseudoCore(z, dr, false, false): box fold + spherical invert */
+        vec3 tempZ = clamp(z, -u_k_csize, u_k_csize);
+        z = tempZ * 2.0 - z;
+        zz = dot(z, z);
+        float k = max(u_k_minR05 / max(zz, 1e-9), 1.0);
+        z *= k;
+        dr *= k;
         z += u_k_add000;
 
-        if (dot(z, z) > u_bailout2) break;
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
     }
     trap = max(sqrt(trap2), 1e-6);
 
-    vec3 zz = z * z;
-    float d1 = sqrt(min(min(zz.x + zz.y, zz.y + zz.z), zz.z + zz.x));
+    vec3 z2 = z * z;
+    float d1 = sqrt(min(min(z2.x + z2.y, z2.y + z2.z), z2.z + z2.x));
     d1 -= u_k_offsetR0;
     float d2 = abs(z.z);
     float de0 = min(d1, d2);
