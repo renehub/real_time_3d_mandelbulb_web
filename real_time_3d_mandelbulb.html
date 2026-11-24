@@ -672,6 +672,7 @@ uniform int   u_ab_zFold, u_ab_quadEnabled, u_ab_swap, u_ab_addCPixel, u_ab_addC
 /* Mod11 hot-loop constants, derived on the CPU (see uploadAboxDerived) */
 uniform vec3  u_ab_foldLim, u_ab_foldMul;   /* box fold: z = mul*clamp(z,-lim,lim) - z */
 uniform vec3  u_ab_qLim, u_ab_qLim2, u_ab_qK; /* quad fold: limit, 2*limit, scale3D/(2*limit) */
+uniform vec3  u_ab_foldC;                   /* 1 - abs(add111), for the tent fold */
 uniform float u_ab_minR2, u_ab_absG1;
 uniform float u_as_scale, u_as_scaleVary, u_as_minR, u_as_scale1;
 uniform vec3  u_as_add111, u_as_cMult, u_as_off000, u_as_offA000;
@@ -2774,7 +2775,8 @@ float aboxMod11DE(vec3 pos, out float trap) {
 
         /* Quadratic fold (D), branch-free: m = max(min(|z|, 2L-|z|), 0) */
         if (u_ab_quadEnabled == 1 && i < u_ab_stopD) {
-            vec3 m = max(min(abs(z), u_ab_qLim2 - abs(z)), 0.0);
+            vec3 az = abs(z);
+            vec3 m = max(min(az, u_ab_qLim2 - az), 0.0);
             z -= sign(z) * (m * m * u_ab_qK);
         }
 
@@ -2783,7 +2785,7 @@ float aboxMod11DE(vec3 pos, out float trap) {
 
         /* Spherical fold (S): f = maxR2 / clamp(rr, minR2, maxR2)  (needs minR2 <= maxR2).
            (z+o)*f - o  ==  z*f + o*(f-1) */
-        float f = u_ab_maxR2 / max(clamp(dot(z, z), u_ab_minR2, u_ab_maxR2), 1e-9);
+        float f = max(1.0, u_ab_maxR2 / max(dot(z, z), u_ab_minR2));
         z = z * f + u_ab_mbOffset * (f - 1.0);
         dr *= f;
 
@@ -2831,20 +2833,17 @@ float aboxMod1DE(vec3 pos, out float trap) {
     float actualScale = u_ab_scale;
     float zz = dot(z, z);               /* reused: trap, bailout, final radius */
     float trap2 = zz;
-    vec3 addAbs = abs(u_ab_add111);     /* loop-invariant |add111| */
     for (int i = 0; i < u_max_iter; i++) {
         if (zz > u_bailout2) break;
         trap2 = min(trap2, zz);
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
-        float fold = 1.0;
-        z.x = fold - abs(abs(z.x + u_ab_add111.x) - fold) - addAbs.x;
-        z.y = fold - abs(abs(z.y + u_ab_add111.y) - fold) - addAbs.y;
-        if (u_ab_zFold == 1) z.z = fold - abs(abs(z.z + u_ab_add111.z) - fold) - addAbs.z;
+        z.xy = u_ab_foldC.xy - abs(abs(z.xy + u_ab_add111.xy) - 1.0);
+        if (u_ab_zFold == 1) z.z = u_ab_foldC.z - abs(abs(z.z + u_ab_add111.z) - 1.0);
 
         /* Spherical fold: f = maxR2 / clamp(rr, minR2, maxR2) */
         float rr = dot(z, z);
-        float f = u_ab_maxR2 / max(clamp(rr, u_ab_minR2, u_ab_maxR2), 1e-9);
+        float f = max(1.0, u_ab_maxR2 / max(rr, u_ab_minR2));
         z *= f; dr *= f;
         z *= actualScale;
         if (u_ab_analyticDE == 1) dr = dr * abs(actualScale) * u_ab_deScale + u_ab_deOffset;
@@ -2878,7 +2877,7 @@ float aboxMod2DE(vec3 pos, out float trap) {
         float rr = z.x * z.x + z.y * z.y + t * t;
 
         /* Spherical fold: f = maxR2 / clamp(rr, minR2, maxR2) */
-        float f = u_ab_maxR2 / max(clamp(rr, u_ab_minR2, u_ab_maxR2), 1e-9);
+        float f = max(1.0, u_ab_maxR2 / max(rr, u_ab_minR2));
         z *= f; dr *= f;
         z *= actualScale;
         dr = dr * abs(actualScale) + 1.0;
@@ -2898,21 +2897,19 @@ float aboxMB3D1DE(vec3 pos, out float trap) {
     float actualScale = u_ab_scale;
     float zz = dot(z, z);               /* reused: trap, bailout, final radius */
     float trap2 = zz;
-    vec3 addAbs = abs(u_ab_add111);             /* loop-invariant |add111| */
     float minRSqr = max(u_ab_minR2p25, 1e-9);   /* loop-invariant */
+    float kThreshold = max(1.0, minRSqr);
     for (int i = 0; i < u_max_iter; i++) {
         if (zz > u_bailout2) break;
         trap2 = min(trap2, zz);
         actualScale = u_ab_scale + u_ab_scaleVary * (abs(actualScale) - 1.0);
 
-        float fold = 1.0;
-        z.x = fold - abs(abs(z.x + u_ab_add111.x) - fold) - addAbs.x;
-        z.y = fold - abs(abs(z.y + u_ab_add111.y) - fold) - addAbs.y;
-        if (u_ab_zFold == 1) z.z = fold - abs(abs(z.z + u_ab_add111.z) - fold) - addAbs.z;
+        z.xy = u_ab_foldC.xy - abs(abs(z.xy + u_ab_add111.xy) - 1.0);
+        if (u_ab_zFold == 1) z.z = u_ab_foldC.z - abs(abs(z.z + u_ab_add111.z) - 1.0);
 
         float rr = dot(z, z);
         /* Three branches collapse to m = scale / max(rr, minRSqr) below max(1, minRSqr). */
-        float m = rr < max(1.0, minRSqr) ? u_ab_scale / max(rr, minRSqr) : 1.0;
+        float m = rr < kThreshold ? u_ab_scale / max(rr, minRSqr) : 1.0;
         z *= m; dr *= abs(m);
         z *= actualScale;
         dr = dr * abs(actualScale) + 1.0;
@@ -2943,7 +2940,7 @@ float abox4dDE(vec3 pos, out float trap) {
 
         /* Spherical fold: f = maxR2 / clamp(rr, minR2, maxR2) */
         float rr = dot(z, z);
-        float f = u_ab_maxR2 / max(clamp(rr, u_ab_minR2, u_ab_maxR2), 1e-9);
+        float f = max(1.0, u_ab_maxR2 / max(rr, u_ab_minR2));
         z *= f; dr *= f;
         z *= actualScale;
         dr = dr * abs(actualScale) + 1.0;
@@ -8339,7 +8336,7 @@ void main() {
 
     u1f(U.u_ab_scale, params.ab_scale);
     u1f(U.u_ab_scaleVary, params.ab_scaleVary);
-    u1f(U.u_ab_maxR2, params.ab_maxR2);
+    u1f(U.u_ab_maxR2, Math.max(1e-9, params.ab_maxR2));
     u1f(U.u_ab_minR2p25, params.ab_minR2p25);
     u1f(U.u_ab_scaleG1, params.ab_scaleG1);
     u1f(U.u_ab_deScale, params.ab_deScale);
@@ -8373,12 +8370,14 @@ void main() {
       if (!params.ab_zFold) { lim[2] = 1e30; mul[2] = 2; }   /* identity on z */
       u3f(U.u_ab_foldLim, lim[0], lim[1], lim[2]);
       u3f(U.u_ab_foldMul, mul[0], mul[1], mul[2]);
+      const foldC = a.map(v => Math.fround(1 - Math.abs(v)));
+      u3f(U.u_ab_foldC, foldC[0], foldC[1], foldC[2]);
       const L = a.map(v => Math.max(v, 1e-6));
       const sc = [params.ab_scale3DX, params.ab_scale3DY, params.ab_scale3DZ];
       u3f(U.u_ab_qLim, L[0], L[1], L[2]);
       u3f(U.u_ab_qLim2, 2 * L[0], 2 * L[1], 2 * L[2]);
       u3f(U.u_ab_qK, sc[0] / (2 * L[0]), sc[1] / (2 * L[1]), sc[2] / (2 * L[2]));
-      u1f(U.u_ab_minR2, Math.min(params.ab_minR2p25, params.ab_maxR2));
+      u1f(U.u_ab_minR2, Math.max(1e-9, Math.min(params.ab_minR2p25, params.ab_maxR2)));
       u1f(U.u_ab_absG1, Math.abs(params.ab_scaleG1));
     }
     u1i(U.u_ab_stopD, params.ab_stopD | 0);
