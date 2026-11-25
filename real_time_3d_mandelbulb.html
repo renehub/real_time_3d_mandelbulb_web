@@ -2190,7 +2190,7 @@ float riemannHoboldDE(vec3 pos, out float trap) {
         if (zz > u_bailout2) break;
         trap = min(trap, max(r_safe, 1e-6));
         z *= u_riem_scale * invR;
-        float ym1 = 1.0 - z.y;
+        float ym1 = u_riem_scale - z.y;
         float ym1_2 = ym1 * ym1;
         float denXY = max(ym1_2 + z.x*z.x, 1e-9);
         float Kx  = 2.0*z.x*ym1 / denXY;
@@ -2234,11 +2234,6 @@ float riemannHoboldDE(vec3 pos, out float trap) {
         }
         float n2y = -Kz;
         float n2z = KyZ - 1.0 + u_riem_offB;
-        if (u_riem_angleDeg != 0.0) {
-            float tX = n1x, tZ = n2z;
-            n1x = tX*u_riem_cs.x + tZ*u_riem_cs.y;
-            n2z = -tX*u_riem_cs.y + tZ*u_riem_cs.x;
-        }
         float n1x2 = n1x*n1x;
         float n2z2 = n2z*n2z;
         float den = max((n1x2 + n1y*n1y)*n2z2 + n1x2*n2y*n2y, 1e-9);
@@ -2246,6 +2241,11 @@ float riemannHoboldDE(vec3 pos, out float trap) {
         z.y = 1.0 - n1x2*n2z2*invDen;
         z.x = n1x*n1y*n2z2*invDen;
         z.z = n1x2*n2y*n2z*invDen;
+        if (u_riem_angleDeg != 0.0) {
+            float tX = z.x, tZ = z.z;
+            z.x = tX*u_riem_cs.x + tZ*u_riem_cs.y;
+            z.z = -tX*u_riem_cs.y + tZ*u_riem_cs.x;
+        }
         float hp = u_power * 0.5;
         float rp = pow(r_safe, hp - 1.0);
         z *= rp * r_safe;
@@ -2277,7 +2277,7 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
         if (zz > u_bailout2) break;
         trap = min(trap, max(r_safe, 1e-6));
         z *= u_riem8_scale * invR;
-        float ym1 = 1.0 - z.y;
+        float ym1 = u_riem8_scale - z.y;
         float ym1_2 = ym1 * ym1;
         float denXY = max(ym1_2 + z.x*z.x, 1e-9);
         float Kx = 2.0*z.x*ym1 / denXY;
@@ -2297,11 +2297,6 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
         K2z = -2.0*Kz*Kyz;  K2yz = 2.0*Kz*Kz - 1.0;
         float n2y = -K2z;
         float n2z = K2yz - 1.0 + u_riem8_offB;
-        if (u_riem8_angleDeg != 0.0) {
-            float tX = n1x, tZ = n2z;
-            n1x = tX*u_riem8_cs.x + tZ*u_riem8_cs.y;
-            n2z = -tX*u_riem8_cs.y + tZ*u_riem8_cs.x;
-        }
         float n1x2 = n1x*n1x;
         float n2z2 = n2z*n2z;
         float den = max((n1x2 + n1y*n1y)*n2z2 + n1x2*n2y*n2y, 1e-9);
@@ -2309,10 +2304,15 @@ float riemannHoboldPow8DE(vec3 pos, out float trap) {
         z.y = 1.0 - n1x2*n2z2*invDen;
         z.x = n1x*n1y*n2z2*invDen;
         z.z = n1x2*n2y*n2z*invDen;
+        if (u_riem8_angleDeg != 0.0) {
+            float tX = z.x, tZ = z.z;
+            z.x = tX*u_riem8_cs.x + tZ*u_riem8_cs.y;
+            z.z = -tX*u_riem8_cs.y + tZ*u_riem8_cs.x;
+        }
         float r2 = r_safe * r_safe;
         float r3 = r2 * r_safe;
         float r4 = r2 * r2;
-        z *= r4;
+        z *= r4 * r4;
         z += cval;
         if (u_riem8_rotEnabled == 1) z = u_riem8_rotMat * z;
         if (u_riem8_analyticDE == 1) {
@@ -2340,7 +2340,7 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
         trap = min(trap, max(r_safe, 1e-6));
         z *= u_riem_scale * invR;
 
-        float ym1 = 1.0 - z.y;
+        float ym1 = u_riem_scale - z.y;
         float ym1_2 = ym1 * ym1;
         float denXY = max(ym1_2 + z.x*z.x, 1e-9);
         float Kx = 2.0*z.x*ym1 / denXY;
@@ -2362,11 +2362,6 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
         float n2y = -Kz;
         float n2z = Kyz - 1.0 + u_riem_offB;
 
-        if (u_riem_angleDeg != 0.0) {
-            float tX = n1x, tZ = n2z;
-            n1x = tX*u_riem_cs.x + tZ*u_riem_cs.y;
-            n2z = -tX*u_riem_cs.y + tZ*u_riem_cs.x;
-        }
         float n1x2 = n1x*n1x;
         float n2z2 = n2z*n2z;
         float den = max((n1x2 + n1y*n1y)*n2z2 + n1x2*n2y*n2y, 1e-9);
@@ -2374,8 +2369,13 @@ float riemannHoboldPow4DE(vec3 pos, out float trap) {
         z.y = 1.0 - n1x2*n2z2*invDen;
         z.x = n1x*n1y*n2z2*invDen;
         z.z = n1x2*n2y*n2z*invDen;
+        if (u_riem_angleDeg != 0.0) {
+            float tX = z.x, tZ = z.z;
+            z.x = tX*u_riem_cs.x + tZ*u_riem_cs.y;
+            z.z = -tX*u_riem_cs.y + tZ*u_riem_cs.x;
+        }
         float r2 = r_safe * r_safe;
-        z *= r2;
+        z *= r2 * r2;
         z += u_riem_adC;
         if (u_riem_rotEnabled == 1) z = u_riem_rotMat * z;
         if (u_riem_analyticDE == 1) {
@@ -7725,6 +7725,16 @@ void main() {
 
   function fractalRowVisible(t, def, key, kind) {
     const fd = def.fractal;
+    /* Power 4 hardcodes its two doublings, so the Multi counters do nothing. */
+    if (t === 60) {
+      if (kind === 'checkbox') {
+        if (key === 'riem_enX' || key === 'riem_enX2' ||
+            key === 'riem_enY' || key === 'riem_enY2') return false;
+      } else if (key === 'riem_cntDXY' || key === 'riem_cntTXY' ||
+                 key === 'riem_cntDYZ' || key === 'riem_cntTYZ') {
+        return false;
+      }
+    }
     if (kind === 'checkbox') {
       if (fractalCompatible(t, fd)) return true;
       if (fd === 'any') return true;
@@ -8165,7 +8175,7 @@ void main() {
     if (!activateProgram(fractalType)) return;
     /* Mandelbulber bailout defaults for the Kleinian family. */
     if (fractalType === 58 || fractalType === 59 || fractalType === 61 || fractalType === 77) params.bailout = 10.0;
-    else if (fractalType === 60) params.bailout = 2.5;
+    else if (fractalType === 3 || fractalType === 5 || fractalType === 60) params.bailout = 2.5;
     else if (fractalType === 62 || (fractalType >= 63 && fractalType <= 66)) params.bailout = 100.0;
     else if (fractalType >= 67 && fractalType <= 76) params.bailout = 10.0;
     else if (fractalType === 78 || fractalType === 79) params.bailout = 100.0;
