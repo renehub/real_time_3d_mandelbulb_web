@@ -28,9 +28,23 @@ Thanks buddhi1980!
     max-height: calc(100vh - 32px); overflow-y: auto;
   }
   #hud.hidden { display: none; }
-  .title { display: flex; justify-content: space-between; align-items: baseline;
+  .title { display: flex; justify-content: space-between; align-items: center;
+           flex-wrap: wrap; gap: 4px 8px;
            font-size: 13px; color: #ebf0fa; letter-spacing: .02em; }
   .title .fps { color: #9fe0ff; font-size: 12px; }
+  .title .title-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  #shareBtn {
+    padding: 3px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+    background: rgba(30, 40, 55, 0.7); color: #dce6f4;
+    border: 1px solid rgba(120, 140, 175, 0.5);
+    font: 11px Consolas, monospace; letter-spacing: .02em;
+  }
+  #shareBtn:hover { background: rgba(50, 65, 90, 0.75); }
+  #shareBtn:focus-visible { border-color: rgba(95, 175, 255, 0.85); outline: none; }
+  #shareBtn.copied {
+    background: rgba(95, 175, 255, 0.22); border-color: rgba(95, 175, 255, 0.85);
+    color: #fff;
+  }
   .fractal-select { display: flex; gap: 6px; margin-top: 8px; }
   .fractal-select select {
     flex: 1 1 0; min-width: 0; padding: 6px 24px 6px 8px; border-radius: 6px;
@@ -210,7 +224,14 @@ Thanks buddhi1980!
 <canvas id="c"></canvas>
 
 <div id="hud">
-  <div class="title"><span>I like fractals</span><span class="fps" id="fps">-- FPS</span></div>
+  <div class="title">
+    <span>I like fractals</span>
+    <div class="title-right">
+      <span class="fps" id="fps">-- FPS</span>
+      <button id="shareBtn" type="button" aria-keyshortcuts="S"
+              title="Copy a link with all current settings (S) · Paste a link to load it (Ctrl/⌘+V)">Share this fractal</button>
+    </div>
+  </div>
 
   <div class="fractal-select">
     <button id="prevFractal" class="fractal-nav" type="button" aria-keyshortcuts="Z"
@@ -316,7 +337,7 @@ Thanks buddhi1980!
     Pyramid, V2, V3, V6 and V7.
   </div>
 
-  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: HUD · Z/X: Prev/Next fractal · 0-9 / Shift+0-9: Palette · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
+  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: HUD · Z/X: Prev/Next fractal · 0-9 / Shift+0-9: Palette · S: Copy share link · Ctrl/⌘+V: Load link · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
 </div>
 
 <div id="err"></div>
@@ -338,6 +359,7 @@ Thanks buddhi1980!
   const colorSpeedInp = document.getElementById('colorSpeed');
   const colorSpeedVal = document.getElementById('colorSpeedVal');
   const rotateBtn = document.getElementById('rotateBtn');
+  const shareBtn = document.getElementById('shareBtn');
   const rotateState = document.getElementById('rotateState');
   const rotXSpeedEl = document.getElementById('rotXSpeed');
   const rotYSpeedEl = document.getElementById('rotYSpeed');
@@ -6249,6 +6271,10 @@ void main() {
     m_int1: 1, m_int8X: 8
   };
 
+  /* Pristine values used to keep share links short: only values that differ
+     from these defaults are written to the URL. */
+  const PARAM_DEFAULTS = Object.assign({}, params);
+
   const ROT_MIN = -180, ROT_MAX = 180;
 
   function setRotPct(inp, v) {
@@ -6428,7 +6454,8 @@ void main() {
     return { offset: 0.10, scale: 0.6 };
   }
 
-  let yaw = -0.68, pitch = 0.35, camDist = 5.0;
+  const CAM_DEFAULT = { yaw: -0.68, pitch: 0.35, dist: 5.0 };
+  let yaw = CAM_DEFAULT.yaw, pitch = CAM_DEFAULT.pitch, camDist = CAM_DEFAULT.dist;
 
   /* ---- Auto-rotation ---- */
   let autoRotate = false;
@@ -7136,6 +7163,7 @@ void main() {
     const st = animStates[def.key];
     if (st) {
       rec.animChk.checked = st.enabled;
+      rec.speedInp.value = st.speed;
       rec.animWrap.classList.toggle('on', st.enabled);
       rec.row.classList.toggle('anim-on', st.enabled);
       syncAnimRangeUI(def);
@@ -7617,7 +7645,7 @@ void main() {
 
   function resetAll() {
     activeAnims.clear();
-    yaw = -0.68; pitch = 0.35; camDist = 5.0;
+    yaw = CAM_DEFAULT.yaw; pitch = CAM_DEFAULT.pitch; camDist = CAM_DEFAULT.dist;
     rotXAngle = rotYAngle = rotZAngle = 0;
     autoRotBuf.set([1, 0, 0, 0, 1, 0, 0, 0, 1]);
     setAutoRotate(false);
@@ -7999,10 +8027,25 @@ void main() {
     } else if (k === 'x') {
       if (!e.repeat) stepFractal(1);
       e.preventDefault();
+    } else if (k === 's') {
+      if (!e.repeat) shareCurrentSettings();
+      e.preventDefault();
     } else if (/^(Digit|Numpad)[0-9]$/.test(e.code)) {
       const digit = parseInt(e.code.slice(-1), 10);
       setPalette(e.shiftKey ? 10 + digit : digit);
       e.preventDefault();
+    }
+  });
+
+  /* Pasting a share link anywhere on the page restores the saved settings.
+     Text fields keep their normal paste behaviour. */
+  window.addEventListener('paste', e => {
+    if (isTypingTarget(e.target)) return;
+    const text = e.clipboardData && e.clipboardData.getData('text');
+    if (!text) return;
+    if (loadShareText(text)) {
+      e.preventDefault();
+      shareFlash('Loaded!');
     }
   });
 
@@ -8080,6 +8123,308 @@ void main() {
     setAutoRotate(!autoRotate);
     rotateBtn.blur();
   });
+
+  /* ------------------------------------------------------------------
+     SHARE LINKS (URL QUERY PARAMETERS)
+     ------------------------------------------------------------------ */
+
+  const SHARE_FLASH_MS = 1600;
+  const SHARE_BTN_LABEL = 'Share this fractal';
+  let shareFlashTimer = 0;
+
+  function shareFlash(label, ok = true) {
+    shareBtn.textContent = label;
+    shareBtn.classList.toggle('copied', ok);
+    if (shareFlashTimer) clearTimeout(shareFlashTimer);
+    shareFlashTimer = setTimeout(() => {
+      shareFlashTimer = 0;
+      shareBtn.textContent = SHARE_BTN_LABEL;
+      shareBtn.classList.remove('copied');
+    }, SHARE_FLASH_MS);
+  }
+
+  function shareNumber(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return null;
+    if (Number.isInteger(v)) return String(v);
+    return String(parseFloat(v.toPrecision(9)));
+  }
+
+  function buildShareQuery() {
+    const parts = [];
+    function add(key, value) {
+      if (value === null || value === undefined) return;
+      parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(value));
+    }
+
+    /* The fractal and rotation flags mirror the short form used in the docs:
+       real_time_3d_mandelbulb.html?rot=1&id=6 */
+    add('id', String(fractalType));
+    /* Marks a complete snapshot. When present, unspecified values are reset
+       to their defaults so pasting a link restores the exact state. */
+    add('full', '1');
+    if (autoRotate) add('rot', '1');
+    if (paletteIndex !== 0) add('pal', String(paletteIndex));
+    if (colorShift !== 0) add('csh', shareNumber(colorShift));
+
+    if (yaw !== CAM_DEFAULT.yaw) add('yaw', shareNumber(yaw));
+    if (pitch !== CAM_DEFAULT.pitch) add('pitch', shareNumber(pitch));
+    if (camDist !== CAM_DEFAULT.dist) add('dist', shareNumber(camDist));
+    if (rotXAngle !== 0) add('rax', shareNumber(rotXAngle));
+    if (rotYAngle !== 0) add('ray', shareNumber(rotYAngle));
+    if (rotZAngle !== 0) add('raz', shareNumber(rotZAngle));
+
+    /* Every slider/checkbox parameter that differs from its pristine value.
+       Keeping defaults out makes typical links short enough to paste around. */
+    for (const key of Object.keys(params)) {
+      const value = params[key];
+      if (value === PARAM_DEFAULTS[key]) continue;
+      if (typeof value === 'boolean') add(key, value ? '1' : '0');
+      else if (typeof value === 'number') add(key, shareNumber(value));
+    }
+
+    const anims = [];
+    for (const key of Object.keys(animStates)) {
+      const st = animStates[key];
+      if (!st || !st.enabled) continue;
+      const def = ui[key] && ui[key].def;
+      let entry = key;
+      const lo = Math.min(st.min, st.max);
+      const hi = Math.max(st.min, st.max);
+      const fullRange = def &&
+        Math.abs(lo - def.min) < 1e-12 && Math.abs(hi - def.max) < 1e-12;
+      if (Math.abs(st.speed - 0.150) > 1e-12 || !fullRange) {
+        entry += ':' + shareNumber(st.speed);
+        if (!fullRange) entry += ':' + shareNumber(lo) + ':' + shareNumber(hi);
+      }
+      anims.push(entry);
+    }
+    if (anims.length) add('anim', anims.join(','));
+    return parts.join('&');
+  }
+
+  function buildShareUrl() {
+    const base = location.href.split('#')[0].split('?')[0];
+    return base + '?' + buildShareQuery();
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.readOnly = true;
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+
+  async function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) { /* fall through to execCommand */ }
+    }
+    return fallbackCopy(text);
+  }
+
+  async function shareCurrentSettings() {
+    const url = buildShareUrl();
+    /* Keep the address bar in sync so a plain refresh restores this state too. */
+    try { history.replaceState(null, '', url); } catch (e) { /* file:// */ }
+    const ok = await copyToClipboard(url);
+    if (ok) {
+      shareFlash('Copied!');
+    } else {
+      shareFlash('Copy failed', false);
+      try { window.prompt('Copy this share link:', url); } catch (e) { /* ignore */ }
+    }
+  }
+
+  shareBtn.addEventListener('click', () => {
+    shareBtn.blur();
+    shareCurrentSettings();
+  });
+
+  const sliderDefs = new Map(SLIDERS.map(def => [def.key, def]));
+  const checkboxDefs = new Map(CHECKBOXES.map(def => [def.key, def]));
+
+  function parseShareFlag(raw, fallback) {
+    if (raw === null || raw === undefined) return fallback;
+    const s = String(raw).trim().toLowerCase();
+    if (s === '1' || s === 'true' || s === 'on' || s === 'yes') return true;
+    if (s === '0' || s === 'false' || s === 'off' || s === 'no') return false;
+    return fallback;
+  }
+
+  function isShareQuery(query) {
+    if (query.has('full') ||
+        query.has('id') || query.has('fractal') ||
+        query.has('rot') || query.has('rotate') ||
+        query.has('pal') || query.has('palette') ||
+        query.has('anim') || query.has('csh') ||
+        query.has('yaw') || query.has('pitch') || query.has('dist') ||
+        query.has('rax') || query.has('ray') || query.has('raz')) return true;
+    for (const key of Object.keys(PARAM_DEFAULTS)) {
+      if (query.has(key)) return true;
+    }
+    return false;
+  }
+
+  function applyShareParams(query) {
+    if (!isShareQuery(query)) return false;
+
+    /* A generated "full" link resets everything first, then applies the
+       values it carries. Hand-written partial links keep current values. */
+    if (parseShareFlag(query.get('full'), false)) {
+      for (const key of Object.keys(PARAM_DEFAULTS)) params[key] = PARAM_DEFAULTS[key];
+      colorShift = 0;
+      yaw = CAM_DEFAULT.yaw; pitch = CAM_DEFAULT.pitch; camDist = CAM_DEFAULT.dist;
+      rotXAngle = rotYAngle = rotZAngle = 0;
+      autoRotBuf.set([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+      for (const key of activeAnims) {
+        const st = animStates[key];
+        if (st) st.enabled = false;
+      }
+      activeAnims.clear();
+      setPalette(0);
+      setAutoRotate(false);
+    }
+
+    const idRaw = query.get('id') !== null ? query.get('id') : query.get('fractal');
+    if (idRaw !== null && idRaw !== '') {
+      const id = parseInt(idRaw, 10);
+      if (FRACTAL_BY_ID.has(id) && id !== fractalType) setFractal(id);
+    }
+
+    const palRaw = query.get('pal') !== null ? query.get('pal') : query.get('palette');
+    if (palRaw !== null && palRaw !== '') {
+      const pal = parseInt(palRaw, 10);
+      if (isFinite(pal)) setPalette(pal);
+    }
+
+    const rotRaw = query.get('rot') !== null ? query.get('rot') : query.get('rotate');
+    if (rotRaw !== null) setAutoRotate(parseShareFlag(rotRaw, autoRotate));
+
+    const numberParam = name => {
+      const raw = query.get(name);
+      if (raw === null || raw.trim() === '') return null;
+      const v = parseFloat(raw);
+      return isFinite(v) ? v : null;
+    };
+
+    let v;
+    if ((v = numberParam('csh')) !== null) colorShift = ((v % 1) + 1) % 1;
+    if ((v = numberParam('yaw')) !== null) yaw = v;
+    if ((v = numberParam('pitch')) !== null) pitch = clamp(v, -1.5, 1.5);
+    if ((v = numberParam('dist')) !== null) camDist = clamp(v, 0.5, 28.0);
+
+    const rax = numberParam('rax'), ray = numberParam('ray'), raz = numberParam('raz');
+    if (rax !== null || ray !== null || raz !== null) {
+      if (rax !== null) rotXAngle = rax % 360;
+      if (ray !== null) rotYAngle = ray % 360;
+      if (raz !== null) rotZAngle = raz % 360;
+      buildRotationMatrix(autoRotBuf, rotXAngle, rotYAngle, rotZAngle);
+    }
+
+    for (const def of SLIDERS) {
+      const raw = query.get(def.key);
+      if (raw === null || raw.trim() === '') continue;
+      let n = parseFloat(raw);
+      if (!isFinite(n)) continue;
+      n = clamp(n, def.min, def.max);
+      if (intKeys.has(def.key) || def.step >= 1) n = Math.round(n);
+      params[def.key] = n;
+    }
+
+    for (const def of CHECKBOXES) {
+      const raw = query.get(def.key);
+      if (raw === null) continue;
+      params[def.key] = parseShareFlag(raw, !!params[def.key]);
+    }
+
+    /* Parameters without a dedicated slider (color animation, rotation speeds). */
+    for (const key of Object.keys(PARAM_DEFAULTS)) {
+      if (sliderDefs.has(key) || checkboxDefs.has(key)) continue;
+      const raw = query.get(key);
+      if (raw === null || raw.trim() === '') continue;
+      const dflt = PARAM_DEFAULTS[key];
+      if (typeof dflt === 'boolean') {
+        params[key] = parseShareFlag(raw, dflt);
+      } else if (typeof dflt === 'number') {
+        let n = parseFloat(raw);
+        if (!isFinite(n)) continue;
+        if (key === 'color_speed') n = clamp(n, 0, 2);
+        else if (key === 'rot_x_speed' || key === 'rot_y_speed' || key === 'rot_z_speed') {
+          n = clamp(n, ROT_MIN, ROT_MAX);
+        }
+        params[key] = n;
+      }
+    }
+
+    const animRaw = query.get('anim');
+    if (animRaw !== null) {
+      for (const key of activeAnims) {
+        const st = animStates[key];
+        if (st) st.enabled = false;
+      }
+      activeAnims.clear();
+      for (const entry of animRaw.split(',')) {
+        const bits = entry.split(':');
+        const key = bits[0];
+        const st = animStates[key];
+        const def = ui[key] && ui[key].def;
+        if (!st || !def) continue;
+        const speed = bits.length > 1 ? parseFloat(bits[1]) : 0.150;
+        let lo = bits.length > 2 ? parseFloat(bits[2]) : def.min;
+        let hi = bits.length > 3 ? parseFloat(bits[3]) : def.max;
+        if (!isFinite(speed) || !isFinite(lo) || !isFinite(hi)) continue;
+        lo = clamp(lo, def.min, def.max);
+        hi = clamp(hi, def.min, def.max);
+        if (lo > hi) { const t = lo; lo = hi; hi = t; }
+        st.enabled = true;
+        st.speed = clamp(speed, 0, 10);
+        st.min = lo; st.max = hi;
+        st.pos = clamp((params[key] - lo) / Math.max(hi - lo, 1e-12), 0, 1);
+        st.dir = st.pos >= 0.999 ? -1 : 1;
+        activeAnims.add(key);
+      }
+    }
+
+    syncRotSpeeds();
+    syncColorSpeed();
+    for (const def of SLIDERS) syncSliderRow(def);
+    for (const def of CHECKBOXES) syncSliderRow(def);
+    updateSliderVisibility();
+    selectEl.value = String(fractalType);
+    markParamsDirty();
+    syncShaderVariants();
+    requestRender();
+    return true;
+  }
+
+  function loadShareText(text) {
+    if (!text) return false;
+    const s = String(text).trim();
+    if (!s || s.length > 200000) return false;
+    let qs = s;
+    const q = s.indexOf('?');
+    if (q >= 0) qs = s.slice(q + 1);
+    else if (s.indexOf('=') < 0) return false;
+    const hash = qs.indexOf('#');
+    if (hash >= 0) qs = qs.slice(0, hash);
+    let query;
+    try { query = new URLSearchParams(qs); } catch (e) { return false; }
+    return applyShareParams(query);
+  }
 
   /* Uniform upload helpers. Locations for uniforms not used by the active
      shader variant are null, so these skip the WebGL call entirely. */
@@ -8700,6 +9045,12 @@ void main() {
     }
   }
   setPalette(0);
+  if (location.search) {
+    try { applyShareParams(new URLSearchParams(location.search)); }
+    catch (e) { /* ignore malformed query strings */ }
+  }
+  /* A URL that carries settings opens with the fractal unobstructed. */
+  if (location.search.length > 1) hudEl.classList.add('hidden');
   requestRender();
 
 })();
