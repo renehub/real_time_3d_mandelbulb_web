@@ -591,6 +591,8 @@ uniform vec3  u_forward, u_right, u_up;
 uniform vec3  u_roObj, u_lightDir;
 uniform float u_cc;
 uniform float u_boundR;
+uniform vec3  u_boxMin, u_boxMax;
+uniform int   u_useAABB;
 uniform int   u_skipShadows; /* 1 while interactive: skip the shadow march */
 uniform mat3  u_rotMat;
 uniform float u_power;
@@ -5902,31 +5904,48 @@ void main() {
     int hitSteps = 0;
     float eps = u_eps;
 
-    float b = dot(ro, rd);
-    float disc = b * b - u_cc;
-
-    if (disc >= 0.0) {
-        float sqrtDisc = sqrt(disc);
-        float t = max(0.0, -b - sqrtDisc);
-        float tMax = -b + sqrtDisc;
-
-        float stepScale = u_stepScale;
-        float pixEps = u_pixEps;
-
-        if (tMax > t) {
-            for (int i = 0; i < 2048; i++) {
-                if (i >= u_max_steps) break;
-                p = ro + rd * t;
-                eps = max(u_eps, t * pixEps);
-#ifdef FAST_MARCH_TRAP
-                float d = sceneFastDE(p);
-#else
-                float d = sceneDE(p, trap);
+    float t = 0.0, tMax = -1.0;
+#ifdef MENGER_AABB
+    if (u_useAABB == 1) {
+        /* Start sponge rays on the cube instead of the bounding sphere. */
+        vec3 rsign = step(vec3(0.0), rd) * 2.0 - 1.0;
+        vec3 invRd = 1.0 / (rsign * max(abs(rd), vec3(1e-8)));
+        vec3 tLo3 = (u_boxMin - ro) * invRd;
+        vec3 tHi3 = (u_boxMax - ro) * invRd;
+        vec3 tNear3 = min(tLo3, tHi3);
+        vec3 tFar3 = max(tLo3, tHi3);
+        float tNear = max(max(tNear3.x, tNear3.y), tNear3.z);
+        float tFar = min(min(tFar3.x, tFar3.y), tFar3.z);
+        t = max(0.0, tNear);
+        tMax = tFar;
+    } else
 #endif
-                if (d < eps) { hit = true; hitSteps = i; break; }
-                t += d * stepScale;
-                if (t > tMax) break;
-            }
+    {
+        float b = dot(ro, rd);
+        float disc = b * b - u_cc;
+        if (disc >= 0.0) {
+            float sqrtDisc = sqrt(disc);
+            t = max(0.0, -b - sqrtDisc);
+            tMax = -b + sqrtDisc;
+        }
+    }
+
+    float stepScale = u_stepScale;
+    float pixEps = u_pixEps;
+
+    if (tMax > t) {
+        for (int i = 0; i < 2048; i++) {
+            if (i >= u_max_steps) break;
+            p = ro + rd * t;
+            eps = max(u_eps, t * pixEps);
+#ifdef FAST_MARCH_TRAP
+            float d = sceneFastDE(p);
+#else
+            float d = sceneDE(p, trap);
+#endif
+            if (d < eps) { hit = true; hitSteps = i; break; }
+            t += d * stepScale;
+            if (t > tMax) break;
         }
     }
 
@@ -6137,7 +6156,9 @@ void main() {
     const fast = FAST_TRAP_FNS[id];
     const fastMarchTrap = !!fast;
     const mbTweak = (id === 0 || id === 58 || (id >= 80 && id <= 113));
+    const mengerAABB = (id === 51);
     const defines = (fastMarchTrap ? '#define FAST_MARCH_TRAP\n' : '') +
+                    (mengerAABB ? '#define MENGER_AABB\n' : '') +
                     (shaderShadows ? '#define ENABLE_SHADOWS\n' : '') +
                     (shaderWireframe ? '#define ENABLE_WIREFRAME\n' : '');
     const prefix = defines
@@ -8750,6 +8771,11 @@ void main() {
     const uploadFractal = !!activeRec && activeRec.uploadedVersion !== paramsVersion;
     if (uploadFractal) {
     u1f(U.u_boundR, tune.bound);
+    if (fractalType === 51) {
+      u1i(U.u_useAABB, Math.abs(params.m_scale3 - 3.0) < 0.4 ? 1 : 0);
+      u3f(U.u_boxMin, -1.001, -1.001, -1.001);
+      u3f(U.u_boxMax, 1.001, 1.001, 1.001);
+    }
     const pal = PALETTES[paletteIndex];
     u3f(U.u_palA, pal.a[0], pal.a[1], pal.a[2]);
     u3f(U.u_palB, pal.b[0], pal.b[1], pal.b[2]);
