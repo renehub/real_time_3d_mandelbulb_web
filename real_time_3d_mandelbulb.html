@@ -540,6 +540,7 @@ Thanks buddhi1980!
      avoid a redundant shader compile. */
   const PROGRAM_ALIAS = { 35: 34, 112: 111 };
   const FAST_TRAP_FNS = {
+    32: ['menger3Fast', 'menger3Trap'],
     16: ['kleinianPseudoFast', 'kleinianPseudoTrap'],
     17: ['kleinianMod1Fast', 'kleinianMod1Trap'],
     18: ['kleinianPseudoFast', 'kleinianPseudoTrap'],
@@ -759,6 +760,9 @@ uniform vec3  u_m_offset111, u_m_offsetA111, u_m_offset222, u_m_offset1105;
 uniform vec3  u_m_cmult111, u_m_cmultA111, u_m_cmult221, u_m_add0555;
 uniform vec4  u_m_add111d5;
 uniform int   u_m_int1, u_m_int8X;
+/* Menger3 fold constants, precomputed once per frame. */
+uniform vec3  u_m_menger3Off;
+uniform float u_m_menger3K;
 
 const float SQRT_1_2 = 0.70710678;
 const float SQRT_1_3 = 0.57735027;
@@ -4889,14 +4893,11 @@ float menger3DE(vec3 pos, out float trap) {
     float dr = 1.0;
     float trap2 = 1e20;
     float zz = dot(z, z);               /* reused: trap, bailout, final radius */
-    /* loop-invariant fold constants */
     float s = u_m_scale3;
-    float offZ3 = u_m_offset111.z / 3.0;
-    vec3 off = u_m_offset111 * (s - 1.0);
     for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, zz);
 
-        /* inlined mengerStdFold: abs + descending sort + z fold + scale */
+        /* inlined mengerStdFold; the z mirror fold is merged into the FMA. */
         z = abs(z);
         {
             vec2 ab = vec2(max(z.x, z.y), min(z.x, z.y));
@@ -4904,8 +4905,8 @@ float menger3DE(vec3 pos, out float trap) {
             float mid = min(ab.x, z.z);
             z = vec3(hi, max(ab.y, mid), min(ab.y, mid));
         }
-        z.z = abs(z.z - offZ3) + offZ3;
-        z = z * s - off;
+        z = z * s - u_m_menger3Off;
+        z.z = max(z.z, u_m_menger3K - z.z);
         dr *= s;
 
         zz = dot(z, z);
@@ -4915,6 +4916,55 @@ float menger3DE(vec3 pos, out float trap) {
     /* inlined mengerIFS with the tracked zz */
     return (sqrt(zz) - 2.0) / max(dr, 1e-9);
 }
+
+#ifdef FAST_MARCH_TRAP
+float menger3Fast(vec3 pos) {
+    vec3 z = pos;
+    float dr = 1.0;
+    float zz = dot(z, z);
+    float s = u_m_scale3;
+    for (int i = 0; i < u_max_iter; i++) {
+        z = abs(z);
+        {
+            vec2 ab = vec2(max(z.x, z.y), min(z.x, z.y));
+            float hi = max(ab.x, z.z);
+            float mid = min(ab.x, z.z);
+            z = vec3(hi, max(ab.y, mid), min(ab.y, mid));
+        }
+        z = z * s - u_m_menger3Off;
+        z.z = max(z.z, u_m_menger3K - z.z);
+        dr *= s;
+
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
+    }
+    return (sqrt(zz) - 2.0) / max(dr, 1e-9);
+}
+
+float menger3Trap(vec3 pos) {
+    vec3 z = pos;
+    float trap2 = 1e20;
+    float zz = dot(z, z);
+    float s = u_m_scale3;
+    for (int i = 0; i < u_max_iter; i++) {
+        trap2 = min(trap2, zz);
+
+        z = abs(z);
+        {
+            vec2 ab = vec2(max(z.x, z.y), min(z.x, z.y));
+            float hi = max(ab.x, z.z);
+            float mid = min(ab.x, z.z);
+            z = vec3(hi, max(ab.y, mid), min(ab.y, mid));
+        }
+        z = z * s - u_m_menger3Off;
+        z.z = max(z.z, u_m_menger3K - z.z);
+
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
+    }
+    return max(sqrt(trap2), 1e-6);
+}
+#endif
 
 float menger3M3dDE(vec3 pos, out float trap) {
     vec3 z = pos;
@@ -9142,6 +9192,13 @@ void main() {
       u4f(U.u_m_add111d5, params.m_add111d5X, params.m_add111d5Y, params.m_add111d5Z, params.m_add111d5W);
       u1i(U.u_m_int1, params.m_int1 | 0);
       u1i(U.u_m_int8X, params.m_int8X | 0);
+      const m3s = params.m_scale3;
+      const m3z = params.m_offset111Z;
+      u3f(U.u_m_menger3Off,
+          params.m_offset111X * (m3s - 1.0),
+          params.m_offset111Y * (m3s - 1.0),
+          m3z * (m3s - 1.0));
+      u1f(U.u_m_menger3K, 2.0 * m3s * (m3z / 3.0) - 2.0 * m3z * (m3s - 1.0));
     }
     activeRec.uploadedVersion = paramsVersion;
     }
