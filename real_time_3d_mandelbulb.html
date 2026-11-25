@@ -541,6 +541,8 @@ Thanks buddhi1980!
   const PROGRAM_ALIAS = { 35: 34, 112: 111 };
   const FAST_TRAP_FNS = {
     32: ['menger3Fast', 'menger3Trap'],
+    34: ['menger4dFast', 'menger4dTrap'],
+    35: ['menger4dFast', 'menger4dTrap'],
     16: ['kleinianPseudoFast', 'kleinianPseudoTrap'],
     17: ['kleinianMod1Fast', 'kleinianMod1Trap'],
     18: ['kleinianPseudoFast', 'kleinianPseudoTrap'],
@@ -5008,9 +5010,7 @@ float menger4dDE(vec3 pos, out float trap) {
     float dr = 1.0;
     float trap2 = 1e20;
     float zz = dot(z, z);               /* reused: trap, bailout, final radius */
-    /* loop-invariant fold constants */
     float s = u_m_scale3;
-    float t = 0.5 * u_m_add111d5.z / s;
     float drScale = s * u_m_anDEscale;
     for (int i = 0; i < u_max_iter; i++) {
         trap2 = min(trap2, zz);
@@ -5024,13 +5024,9 @@ float menger4dDE(vec3 pos, out float trap) {
             vec2 c12 = vec2(max(b02.y, b13.x), min(b02.y, b13.x));
             z = vec4(b02.x, c12.x, c12.y, b13.y);
         }
-        z.x = s * z.x - u_m_add111d5.x;
-        z.y = s * z.y - u_m_add111d5.y;
-        z.w = s * z.w - u_m_add111d5.w;
-        z.z -= t;
-        z.z = -abs(z.z);
-        z.z += t;
-        z.z *= s;
+        /* Single vec4 FMA; the z mirror fold is min(s*z, add.z - s*z). */
+        z = s * z - u_m_add111d5;
+        z.z = min(z.z + u_m_add111d5.z, -z.z);
         dr *= drScale;
 
         zz = dot(z, z);
@@ -5040,6 +5036,60 @@ float menger4dDE(vec3 pos, out float trap) {
     /* inlined mengerIFS4 with the tracked zz */
     return (sqrt(zz) - 2.0) / max(dr, 1e-9);
 }
+
+#ifdef FAST_MARCH_TRAP
+float menger4dFast(vec3 pos) {
+    vec4 z = vec4(pos, 0.0);
+    float dr = 1.0;
+    float zz = dot(z, z);
+    float s = u_m_scale3;
+    float drScale = s * u_m_anDEscale;
+    for (int i = 0; i < u_max_iter; i++) {
+        z = abs(z);
+        {
+            vec2 a01 = vec2(max(z.x, z.y), min(z.x, z.y));
+            vec2 a23 = vec2(max(z.z, z.w), min(z.z, z.w));
+            vec2 b02 = vec2(max(a01.x, a23.x), min(a01.x, a23.x));
+            vec2 b13 = vec2(max(a01.y, a23.y), min(a01.y, a23.y));
+            vec2 c12 = vec2(max(b02.y, b13.x), min(b02.y, b13.x));
+            z = vec4(b02.x, c12.x, c12.y, b13.y);
+        }
+        z = s * z - u_m_add111d5;
+        z.z = min(z.z + u_m_add111d5.z, -z.z);
+        dr *= drScale;
+
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
+    }
+    return (sqrt(zz) - 2.0) / max(dr, 1e-9);
+}
+
+float menger4dTrap(vec3 pos) {
+    vec4 z = vec4(pos, 0.0);
+    float trap2 = 1e20;
+    float zz = dot(z, z);
+    float s = u_m_scale3;
+    for (int i = 0; i < u_max_iter; i++) {
+        trap2 = min(trap2, zz);
+
+        z = abs(z);
+        {
+            vec2 a01 = vec2(max(z.x, z.y), min(z.x, z.y));
+            vec2 a23 = vec2(max(z.z, z.w), min(z.z, z.w));
+            vec2 b02 = vec2(max(a01.x, a23.x), min(a01.x, a23.x));
+            vec2 b13 = vec2(max(a01.y, a23.y), min(a01.y, a23.y));
+            vec2 c12 = vec2(max(b02.y, b13.x), min(b02.y, b13.x));
+            z = vec4(b02.x, c12.x, c12.y, b13.y);
+        }
+        z = s * z - u_m_add111d5;
+        z.z = min(z.z + u_m_add111d5.z, -z.z);
+
+        zz = dot(z, z);
+        if (zz > u_bailout2) break;
+    }
+    return max(sqrt(trap2), 1e-6);
+}
+#endif
 
 float menger4dMod1DE(vec3 pos, out float trap) {
     vec4 z = vec4(pos, 0.0); float dr = 1.0; float trap2 = 1e20;
