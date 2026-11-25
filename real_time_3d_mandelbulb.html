@@ -546,6 +546,7 @@ Thanks buddhi1980!
     19: ['kleinianMod3Fast', 'kleinianMod3Trap'],
     20: ['kleinianMod4Fast', 'kleinianMod4Trap'],
     24: ['kleinian4dFast', 'kleinian4dTrap'],
+    105: ['mandelbulbQuadratFast', 'mandelbulbQuadratTrap'],
   };
 
   /* Build the picker from the registry so the options can never drift
@@ -1664,31 +1665,101 @@ float mandelbulbPupukuDE(vec3 pos, out float trap) {
 }
 
 /* ===================== Mandelbulb Quadrat ===================== */
+/* u_mb_qdMul.z is pre-negated on the CPU. */
 float mandelbulbQuadratDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
+    vec3 z = pos; float dr = 1.0;
+    float trap2 = dot(z, z);
+    vec3 c = pos + u_mb_qdAdd;
+    vec3 preMask = vec3(u_mb_preX, u_mb_preY, u_mb_preZ);
+    bool anyPre = (u_mb_preX != 0 || u_mb_preY != 0 || u_mb_preZ != 0);
     for (int i = 0; i < u_max_iter; i++) {
-        float r = length(z);
-        if (r > u_bailout) break;
-        trapv = min(trapv, max(r, 1e-6));
-        if (u_mb_preX == 1) z.x = abs(z.x);
-        if (u_mb_preY == 1) z.y = abs(z.y);
-        if (u_mb_preZ == 1) z.z = abs(z.z);
-        dr = dr * 2.0 * max(length(z), 1e-6) + 1.0;
-        float temp = z.x*z.x + z.y*z.y;
+        vec3 z2 = z * z;
+        float temp = z2.x + z2.y;
+        float zz = temp + z2.z;
+        if (zz > u_bailout2) break;
+        trap2 = min(trap2, zz);
+        float r = max(sqrt(zz), 1e-6);
+        dr = dr * 2.0 * r + 1.0;
+        if (anyPre) z = mix(z, abs(z), preMask);
         if (temp <= 0.0) z = pos;
         else {
+            float invSqrtT = inversesqrt(temp);
+            float sqrtT = temp * invSqrtT;
+            float invT = invSqrtT * invSqrtT;
             vec3 mul = u_mb_qdMul;
-            mul.z = -mul.z * z.z * sqrt(temp);
-            temp = u_mb_qdZR - z.z*z.z / temp;
-            mul.x = mul.x * (z.x*z.x - z.y*z.y) * temp;
-            mul.y = mul.y * z.x * z.y * temp;
-            z = mul + pos + u_mb_qdAdd;
+            mul.z = mul.z * z.z * sqrtT;
+            float temp2 = u_mb_qdZR - z2.z * invT;
+            mul.x = mul.x * (z2.x - z2.y) * temp2;
+            mul.y = mul.y * z.x * z.y * temp2;
+            z = mul + c;
         }
     }
-    trap = trapv;
+    trap = max(sqrt(trap2), 1e-6);
     float r = max(length(z), 1e-6);
     return 0.5 * log(r) * r / max(dr, 1e-6);
 }
+
+#ifdef FAST_MARCH_TRAP
+float mandelbulbQuadratFast(vec3 pos) {
+    vec3 z = pos; float dr = 1.0;
+    vec3 c = pos + u_mb_qdAdd;
+    vec3 preMask = vec3(u_mb_preX, u_mb_preY, u_mb_preZ);
+    bool anyPre = (u_mb_preX != 0 || u_mb_preY != 0 || u_mb_preZ != 0);
+    for (int i = 0; i < u_max_iter; i++) {
+        vec3 z2 = z * z;
+        float temp = z2.x + z2.y;
+        float zz = temp + z2.z;
+        if (zz > u_bailout2) break;
+        float r = max(sqrt(zz), 1e-6);
+        dr = dr * 2.0 * r + 1.0;
+        if (anyPre) z = mix(z, abs(z), preMask);
+        if (temp <= 0.0) z = pos;
+        else {
+            float invSqrtT = inversesqrt(temp);
+            float sqrtT = temp * invSqrtT;
+            float invT = invSqrtT * invSqrtT;
+            vec3 mul = u_mb_qdMul;
+            mul.z = mul.z * z.z * sqrtT;
+            float temp2 = u_mb_qdZR - z2.z * invT;
+            mul.x = mul.x * (z2.x - z2.y) * temp2;
+            mul.y = mul.y * z.x * z.y * temp2;
+            z = mul + c;
+        }
+    }
+    float r = max(length(z), 1e-6);
+    float d = 0.5 * log(r) * r / max(dr, 1e-6);
+    return max(d * u_mb_deScale + u_mb_deOffset, 1e-6);
+}
+
+float mandelbulbQuadratTrap(vec3 pos) {
+    vec3 z = pos;
+    float trap2 = dot(z, z);
+    vec3 c = pos + u_mb_qdAdd;
+    vec3 preMask = vec3(u_mb_preX, u_mb_preY, u_mb_preZ);
+    bool anyPre = (u_mb_preX != 0 || u_mb_preY != 0 || u_mb_preZ != 0);
+    for (int i = 0; i < u_max_iter; i++) {
+        vec3 z2 = z * z;
+        float temp = z2.x + z2.y;
+        float zz = temp + z2.z;
+        if (zz > u_bailout2) break;
+        trap2 = min(trap2, zz);
+        if (anyPre) z = mix(z, abs(z), preMask);
+        if (temp <= 0.0) z = pos;
+        else {
+            float invSqrtT = inversesqrt(temp);
+            float sqrtT = temp * invSqrtT;
+            float invT = invSqrtT * invSqrtT;
+            vec3 mul = u_mb_qdMul;
+            mul.z = mul.z * z.z * sqrtT;
+            float temp2 = u_mb_qdZR - z2.z * invT;
+            mul.x = mul.x * (z2.x - z2.y) * temp2;
+            mul.y = mul.y * z.x * z.y * temp2;
+            z = mul + c;
+        }
+    }
+    return max(sqrt(trap2), 1e-6);
+}
+#endif
 
 /* ===================== Mandelbulb Quat ===================== */
 float mandelbulbQuatDE(vec3 pos, out float trap) {
@@ -8552,7 +8623,8 @@ void main() {
     u1f(U.u_mb_p4Scale2, params.mb_p4Scale2);
     u1f(U.u_mb_p4ScaleA, params.mb_p4ScaleA);
     u1f(U.u_mb_p4ScaleZ, params.mb_p4ScaleZ);
-    u3f(U.u_mb_qdMul, params.mb_qdMulX, params.mb_qdMulY, params.mb_qdMulZ);
+    /* Quadrat uses -mul.z in its fold; pre-negating avoids a per-iteration op. */
+    u3f(U.u_mb_qdMul, params.mb_qdMulX, params.mb_qdMulY, -params.mb_qdMulZ);
     u1f(U.u_mb_qdZR, params.mb_qdZR);
     u3f(U.u_mb_qdAdd, params.mb_qdAddX, params.mb_qdAddY, params.mb_qdAddZ);
     u3f(U.u_mb_qtMul, params.mb_qtMulX, params.mb_qtMulY, params.mb_qtMulZ);
