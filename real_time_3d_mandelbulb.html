@@ -546,6 +546,7 @@ Thanks buddhi1980!
     19: ['kleinianMod3Fast', 'kleinianMod3Trap'],
     20: ['kleinianMod4Fast', 'kleinianMod4Trap'],
     24: ['kleinian4dFast', 'kleinian4dTrap'],
+    88: ['mandelbulbBermarteFast', 'mandelbulbBermarteTrap'],
     105: ['mandelbulbQuadratFast', 'mandelbulbQuadratTrap'],
   };
 
@@ -1194,44 +1195,126 @@ float mandelbulbAtan2Power2DE(vec3 pos, out float trap) {
 
 /* ===================== Mandelbulb Bermarte ===================== */
 float mandelbulbBermarteDE(vec3 pos, out float trap) {
-    vec3 z = pos; float dr = 1.0; float trapv = max(length(z), 1e-6);
+    vec3 z = pos; float dr = 1.0;
+    float trap2 = dot(z, z);
+    vec3 preMask = vec3(u_mb_preX, u_mb_preY, u_mb_preZ);
+    vec3 postMask = vec3(u_mb_postX, u_mb_postY, u_mb_postZ);
+    bool anyPre = (u_mb_preX != 0 || u_mb_preY != 0 || u_mb_preZ != 0);
+    bool anyPostXYZ = (u_mb_postX != 0 || u_mb_postY != 0 || u_mb_postZ != 0);
+    bool anyPostXY = (u_mb_postX != 0 || u_mb_postY != 0);
+    float p = u_mb_bmPower;
+    float psA = p * u_mb_bmScaleA;
+    float psB = p * u_mb_bmScaleB;
     for (int i = 0; i < u_max_iter; i++) {
-        float r = length(z);
-        if (r > u_bailout) break;
-        float r_safe = max(r, 1e-6);
-        trapv = min(trapv, r_safe);
+        float zz = dot(z, z);
+        if (zz > u_bailout2) break;
+        float r_safe = max(sqrt(zz), 1e-6);
+        trap2 = min(trap2, zz);
 
-        if (u_mb_preX == 1) z.x = abs(z.x);
-        if (u_mb_preY == 1) z.y = abs(z.y);
-        if (u_mb_preZ == 1) z.z = abs(z.z);
+        if (anyPre) z = mix(z, abs(z), preMask);
 
-        float p = u_mb_bmPower;
         float th0 = asin(clamp(z.z / r_safe, -1.0, 1.0)) + u_mb_beta;
         float ph0 = atan(z.y, z.x) + u_mb_alpha;
-        th0 *= p * u_mb_bmScaleA;
+        th0 *= psA;
         float cth = cos(th0);
-        z = r_safe * vec3(cth * sin(ph0), cos(ph0) * cth, sin(th0));
-        if (u_mb_postX == 1) z.x = abs(z.x);
-        if (u_mb_postY == 1) z.y = abs(z.y);
-        if (u_mb_postZ == 1) z.z = abs(z.z);
+        vec3 d = vec3(cth * sin(ph0), cos(ph0) * cth, sin(th0));
+        if (anyPostXYZ) d = mix(d, abs(d), postMask);
 
-        r = max(length(z), 1e-6);
-        th0 = asin(clamp(z.z / r, -1.0, 1.0)) + u_mb_beta;
-        ph0 = atan(z.y, z.x) * p * u_mb_bmScaleB;
+        th0 = asin(clamp(d.z, -1.0, 1.0)) + u_mb_beta;
+        ph0 = atan(d.y, d.x) * psB;
         cth = cos(th0);
-        float rp = pow(r, p - 1.0);
-        float zp = rp * r;
+        float rp = pow(r_safe, p - 1.0);
+        float zp = rp * r_safe;
         z = zp * vec3(cth * sin(ph0), cos(ph0) * cth, sin(th0));
-        if (u_mb_postX == 1) z.x = abs(z.x);
-        if (u_mb_postY == 1) z.y = abs(z.y);
+        if (anyPostXY) z.xy = abs(z.xy);
 
         dr = rp * p * dr + 1.0;
         z += pos;
     }
-    trap = trapv;
-    float r = max(length(z), 1e-6);
-    return 0.5 * log(r) * r / max(dr, 1e-6);
+    trap = max(sqrt(trap2), 1e-6);
+    float zzEnd = max(dot(z, z), 1e-12);
+    return 0.25 * log(zzEnd) * sqrt(zzEnd) / max(dr, 1e-6);
 }
+
+#ifdef FAST_MARCH_TRAP
+float mandelbulbBermarteFast(vec3 pos) {
+    vec3 z = pos; float dr = 1.0;
+    vec3 preMask = vec3(u_mb_preX, u_mb_preY, u_mb_preZ);
+    vec3 postMask = vec3(u_mb_postX, u_mb_postY, u_mb_postZ);
+    bool anyPre = (u_mb_preX != 0 || u_mb_preY != 0 || u_mb_preZ != 0);
+    bool anyPostXYZ = (u_mb_postX != 0 || u_mb_postY != 0 || u_mb_postZ != 0);
+    bool anyPostXY = (u_mb_postX != 0 || u_mb_postY != 0);
+    float p = u_mb_bmPower;
+    float psA = p * u_mb_bmScaleA;
+    float psB = p * u_mb_bmScaleB;
+    for (int i = 0; i < u_max_iter; i++) {
+        float zz = dot(z, z);
+        if (zz > u_bailout2) break;
+        float r_safe = max(sqrt(zz), 1e-6);
+
+        if (anyPre) z = mix(z, abs(z), preMask);
+
+        float th0 = asin(clamp(z.z / r_safe, -1.0, 1.0)) + u_mb_beta;
+        float ph0 = atan(z.y, z.x) + u_mb_alpha;
+        th0 *= psA;
+        float cth = cos(th0);
+        vec3 d = vec3(cth * sin(ph0), cos(ph0) * cth, sin(th0));
+        if (anyPostXYZ) d = mix(d, abs(d), postMask);
+
+        th0 = asin(clamp(d.z, -1.0, 1.0)) + u_mb_beta;
+        ph0 = atan(d.y, d.x) * psB;
+        cth = cos(th0);
+        float rp = pow(r_safe, p - 1.0);
+        float zp = rp * r_safe;
+        z = zp * vec3(cth * sin(ph0), cos(ph0) * cth, sin(th0));
+        if (anyPostXY) z.xy = abs(z.xy);
+
+        dr = rp * p * dr + 1.0;
+        z += pos;
+    }
+    float zzEnd = max(dot(z, z), 1e-12);
+    float d = 0.25 * log(zzEnd) * sqrt(zzEnd) / max(dr, 1e-6);
+    return max(d * u_mb_deScale + u_mb_deOffset, 1e-6);
+}
+
+float mandelbulbBermarteTrap(vec3 pos) {
+    vec3 z = pos;
+    float trap2 = dot(z, z);
+    vec3 preMask = vec3(u_mb_preX, u_mb_preY, u_mb_preZ);
+    vec3 postMask = vec3(u_mb_postX, u_mb_postY, u_mb_postZ);
+    bool anyPre = (u_mb_preX != 0 || u_mb_preY != 0 || u_mb_preZ != 0);
+    bool anyPostXYZ = (u_mb_postX != 0 || u_mb_postY != 0 || u_mb_postZ != 0);
+    bool anyPostXY = (u_mb_postX != 0 || u_mb_postY != 0);
+    float p = u_mb_bmPower;
+    float psA = p * u_mb_bmScaleA;
+    float psB = p * u_mb_bmScaleB;
+    for (int i = 0; i < u_max_iter; i++) {
+        float zz = dot(z, z);
+        if (zz > u_bailout2) break;
+        float r_safe = max(sqrt(zz), 1e-6);
+        trap2 = min(trap2, zz);
+
+        if (anyPre) z = mix(z, abs(z), preMask);
+
+        float th0 = asin(clamp(z.z / r_safe, -1.0, 1.0)) + u_mb_beta;
+        float ph0 = atan(z.y, z.x) + u_mb_alpha;
+        th0 *= psA;
+        float cth = cos(th0);
+        vec3 d = vec3(cth * sin(ph0), cos(ph0) * cth, sin(th0));
+        if (anyPostXYZ) d = mix(d, abs(d), postMask);
+
+        th0 = asin(clamp(d.z, -1.0, 1.0)) + u_mb_beta;
+        ph0 = atan(d.y, d.x) * psB;
+        cth = cos(th0);
+        float rp = pow(r_safe, p - 1.0);
+        z = (rp * r_safe) * vec3(cth * sin(ph0), cos(ph0) * cth, sin(th0));
+        if (anyPostXY) z.xy = abs(z.xy);
+
+        z += pos;
+    }
+    return max(sqrt(trap2), 1e-6);
+}
+#endif
 
 /* ===================== Mandelbulb Eye ===================== */
 float mandelbulbEyeDE(vec3 pos, out float trap) {
