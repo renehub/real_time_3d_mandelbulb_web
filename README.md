@@ -11,6 +11,8 @@
 | **B** | Reverse animation direction (toggle) |
 | **L** | Animation speed ÷ 10 |
 | **Shift+L** | Animation speed × 10 |
+| **O** | Increase all animation speeds × 1.05 |
+| **Shift+O** | Decrease all animation speeds ÷ 1.05 |
 | **U** | Show / hide HUD |
 | **R** | Reset all settings |
 | **Z** | Previous fractal |

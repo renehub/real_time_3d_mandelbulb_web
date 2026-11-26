@@ -349,7 +349,7 @@ Thanks buddhi1980!
     Pyramid, V2, V3, V6 and V7.
   </div>
 
-  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: Pause/Resume · B: Reverse animation · L/Shift+L: Anim speed ÷/×10 · A: Auto-rotate · Q/W: Palette · U: HUD · Z/X: Prev/Next fractal · 0-9 / Shift+0-9: Palette · S: Copy share link · Ctrl/⌘+V: Load link · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
+  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: Pause/Resume · B: Reverse animation · L/Shift+L: Anim speed ÷/×10 · O/Shift+O: ×/÷1.05 · A: Auto-rotate · Q/W: Palette · U: HUD · Z/X: Prev/Next fractal · 0-9 / Shift+0-9: Palette · S: Copy share link · Ctrl/⌘+V: Load link · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
 </div>
 
 <div id="err"></div>
@@ -8378,6 +8378,9 @@ void main() {
       e.preventDefault();
     } else if (k === 'l') {
       if (!e.repeat) scaleAnimationSpeed(e.shiftKey ? 10 : 0.1);
+      e.preventDefault();
+    } else if (k === 'o') {
+      if (!e.repeat) scaleAnimationSpeed(e.shiftKey ? 1 / 1.05 : 1.05);
       e.preventDefault();
     } else if (k === 'u') {
       const hidden = hudEl.classList.toggle('hidden');
