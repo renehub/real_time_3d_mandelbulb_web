@@ -1,3 +1,48 @@
+## Controls
+
+### Keyboard
+
+| Key | Action |
+| --- | --- |
+| **Q** | Previous palette |
+| **W** | Next palette |
+| **A** | Toggle auto-rotate |
+| **H** | Pause / resume all animations |
+| **B** | Reverse animation direction (toggle) |
+| **L** | Animation speed ÷ 10 |
+| **Shift+L** | Animation speed × 10 |
+| **U** | Show / hide HUD |
+| **R** | Reset all settings |
+| **Z** | Previous fractal |
+| **X** | Next fractal |
+| **S** | Copy/save the share link |
+| **0–9** | Palette 0–9 |
+| **Shift+0–9** | Palette 10–19 |
+| **Ctrl/⌘+V** | Load a share link from the clipboard |
+
+Shortcuts are ignored while typing in text/number inputs. Number-pad digits also work for palettes.
+
+### Mouse
+
+- **Drag** — rotate the view
+- **Wheel** — zoom
+
+### UI buttons
+
+| Button | Action |
+| --- | --- |
+| **Save/share fractal** | Copy the current state as a URL and update the address bar |
+| **‹** | Previous fractal |
+| **›** | Next fractal |
+| **Auto-rotate** | Toggle auto-rotation |
+| **Fractal dropdown** | Select a fractal |
+| **BG slider** | Background brightness (0 = black, 2 = bright) |
+| **Palette/Color slider** | Color palette and color animation speed |
+| **X/Y/Z rotation sliders** | Auto-rotation speeds |
+| **Per-slider animate checkbox + speed** | Enable and tune slider animation |
+
+---
+
 try it here:
 
 https://www.rele.be/var/man.html
