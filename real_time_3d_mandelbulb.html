@@ -101,6 +101,10 @@ Thanks buddhi1980!
     color: #fff;
   }
   .rotate-row .rstate { font-size: 11px; color: #96a5be; }
+  .rotate-row .bg-slider { flex: 1 1 90px; min-width: 70px; margin-left: auto; }
+  .rotate-row .bg-slider .rl { flex: 0 0 auto; }
+  .rotate-row .bg-slider .rv { flex: 0 0 30px; }
+  #bgBrightness { --accent: #cbd5e1; }
   .rotate-panel {
     position: sticky; top: -8px; z-index: 5;
     margin: 0 -4px; padding: 4px;
@@ -229,7 +233,7 @@ Thanks buddhi1980!
     <div class="title-right">
       <span class="fps" id="fps">-- FPS</span>
       <button id="shareBtn" type="button" aria-keyshortcuts="S"
-              title="Copy a link with all current settings (S) · Paste a link to load it (Ctrl/⌘+V)">Share this fractal</button>
+              title="Copy a link with all current settings (S) · Paste a link to load it (Ctrl/⌘+V)">Save/share fractal</button>
     </div>
   </div>
 
@@ -253,8 +257,16 @@ Thanks buddhi1980!
 
   <div id="rotatePanel" class="rotate-panel">
     <div class="rotate-row">
-      <button id="rotateBtn" type="button" aria-pressed="false">Auto-rotate</button>
+      <button id="rotateBtn" type="button" aria-pressed="false"
+              aria-keyshortcuts="A" title="Auto-rotate (A)">Auto-rotate</button>
       <span class="rstate" id="rotateState">off</span>
+      <div class="rot-slider bg-slider">
+        <span class="rl" title="Background brightness">BG</span>
+        <input id="bgBrightness" type="range" min="0" max="2" step="0.01" value="1"
+               aria-label="Background brightness"
+               title="Background brightness (0 = black, 2 = bright)">
+        <span class="rv" id="bgBrightnessVal">1.00</span>
+      </div>
     </div>
     <div class="rotate-speeds">
       <div class="rot-slider">
@@ -337,7 +349,7 @@ Thanks buddhi1980!
     Pyramid, V2, V3, V6 and V7.
   </div>
 
-  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: HUD · Z/X: Prev/Next fractal · 0-9 / Shift+0-9: Palette · S: Copy share link · Ctrl/⌘+V: Load link · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
+  <div class="hint">Drag: Rotate · Wheel: Zoom · R: Reset · H: Pause/Resume · B: Reverse animation · L/Shift+L: Anim speed ÷/×10 · A: Auto-rotate · Q/W: Palette · U: HUD · Z/X: Prev/Next fractal · 0-9 / Shift+0-9: Palette · S: Copy share link · Ctrl/⌘+V: Load link · Animate: slider checkbox (min/max) · Shadows: toggle · Speed: range/sec</div>
 </div>
 
 <div id="err"></div>
@@ -358,6 +370,8 @@ Thanks buddhi1980!
   const paletteSwatchEl = document.getElementById('paletteSwatch');
   const colorSpeedInp = document.getElementById('colorSpeed');
   const colorSpeedVal = document.getElementById('colorSpeedVal');
+  const bgBrightnessInp = document.getElementById('bgBrightness');
+  const bgBrightnessVal = document.getElementById('bgBrightnessVal');
   const rotateBtn = document.getElementById('rotateBtn');
   const shareBtn = document.getElementById('shareBtn');
   const rotateState = document.getElementById('rotateState');
@@ -608,6 +622,7 @@ uniform float u_bailout;
 uniform float u_bailout2;
 uniform vec3  u_palA, u_palB, u_palC, u_palD;
 uniform float u_colorShift;
+uniform float u_bgBrightness;
 
 uniform vec3  u_offset;
 uniform float u_mb_alpha, u_mb_beta, u_mb_absA, u_mb_absB, u_mb_gamma;
@@ -6010,7 +6025,7 @@ void main() {
     }
     if (!hit) {
         float bgT = clamp(0.5 * (rdW.z + 1.0), 0.0, 1.0);
-        col = mix(vec3(0.03, 0.04, 0.08), vec3(0.12, 0.16, 0.28), bgT);
+        col = mix(vec3(0.03, 0.04, 0.08), vec3(0.12, 0.16, 0.28), bgT) * u_bgBrightness;
     }
     col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
     fragColor = vec4(col, 1.0);
@@ -6341,6 +6356,7 @@ void main() {
     shadowsEnabled: false,
     wireframeEnabled: false,
     color_speed: 0.000,
+    bg_brightness: 1.000,
     rot_x_speed: 3.0, rot_y_speed: 5.0, rot_z_speed: 7.0,
     off_x: 0.300, off_y: 0.300, off_z: 0.300,
     xeno_alpha: 0.000, xeno_beta: 0.000, xeno_sA: 1.000, xeno_sB: 1.000,
@@ -6634,6 +6650,21 @@ void main() {
   colorSpeedInp.addEventListener('pointerup', () => colorSpeedInp.blur());
   syncColorSpeed();
 
+  function syncBgBrightness() {
+    bgBrightnessInp.value = params.bg_brightness;
+    bgBrightnessVal.textContent = params.bg_brightness.toFixed(2);
+    bgBrightnessInp.style.setProperty('--pct', (50 * params.bg_brightness).toFixed(1) + '%');
+  }
+
+  bgBrightnessInp.addEventListener('input', () => {
+    const v = parseFloat(bgBrightnessInp.value);
+    params.bg_brightness = isFinite(v) ? clamp(v, 0, 2) : 1;
+    syncBgBrightness();
+    requestRender();
+  });
+  bgBrightnessInp.addEventListener('pointerup', () => bgBrightnessInp.blur());
+  syncBgBrightness();
+
   function getEps() { return Math.pow(10.0, -4.0 + params.eps_t * 2.0); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
@@ -6744,6 +6775,9 @@ void main() {
   let interactionSettleTimer = 0;
   let needsRender = true;
   let rafId = 0;
+  let paused = false;
+  let animationDir = 1;
+  let animationSpeed = 1;
   let frameCount = 0;
   let fpsClock = performance.now();
   let lastTickTime = performance.now();
@@ -7483,8 +7517,8 @@ void main() {
       ui[def.key].input.value = v;
       refreshSlider(def);
       st.pos = clamp((v - lo) / span, 0, 1);
-      if (st.pos >= 0.999) st.dir = -1;
-      else if (st.pos <= 0.001) st.dir = 1;
+      if (st.pos >= 0.999) st.dir = -animationDir;
+      else if (st.pos <= 0.001) st.dir = animationDir;
       markParamsDirty();
     } else {
       st.pos = clamp((params[def.key] - lo) / span, 0, 1);
@@ -7611,7 +7645,7 @@ void main() {
           const lo = Math.min(st.min, st.max);
           const span = Math.max(st.max - st.min, 1e-12);
           st.pos = clamp((params[def.key] - lo) / span, 0, 1);
-          st.dir = (st.pos >= 0.999) ? -1 : 1;
+          st.dir = (st.pos >= 0.999) ? -animationDir : animationDir;
         }
         st.enabled = animChk.checked;
         if (st.enabled) activeAnims.add(def.key);
@@ -7898,7 +7932,8 @@ void main() {
     if (!colorSpeedActive()) return;
     if (dt > 0.15) dt = 0.15;
     const mult = PALETTES[paletteIndex].speed || 1;
-    colorShift = (colorShift + params.color_speed * mult * dt) % 1.0;
+    colorShift = (colorShift + animationDir * animationSpeed * params.color_speed * mult * dt) % 1.0;
+    if (colorShift < 0) colorShift += 1.0;
   }
 
   function updateAnimations(dt) {
@@ -7908,7 +7943,7 @@ void main() {
       const st = animStates[key];
       if (!st || !st.enabled || st.speed <= 0) continue;
       const def = ui[key].def;
-      st.pos += st.dir * st.speed * dt;
+      st.pos += st.dir * st.speed * animationSpeed * dt;
       if (st.pos >= 1) { st.pos = 1; st.dir = -1; }
       if (st.pos <= 0) { st.pos = 0; st.dir = 1; }
       const lo = Math.min(st.min, st.max);
@@ -7930,6 +7965,8 @@ void main() {
 
   function resetAll() {
     activeAnims.clear();
+    animationDir = 1;
+    animationSpeed = 1;
     yaw = CAM_DEFAULT.yaw; pitch = CAM_DEFAULT.pitch; camDist = CAM_DEFAULT.dist;
     rotXAngle = rotYAngle = rotZAngle = 0;
     autoRotBuf.set([1, 0, 0, 0, 1, 0, 0, 0, 1]);
@@ -7941,7 +7978,8 @@ void main() {
     params.wireframeEnabled = false;
     params.rot_x_speed = 3.0; params.rot_y_speed = 5.0; params.rot_z_speed = 7.0;
     params.color_speed = 0.0; colorShift = 0.0;
-    syncRotSpeeds(); syncColorSpeed();
+    params.bg_brightness = 1.0;
+    syncRotSpeeds(); syncColorSpeed(); syncBgBrightness();
     params.off_x = 0.300; params.off_y = 0.300; params.off_z = 0.300;
     params.xeno_alpha = 0.000; params.xeno_beta = 0.000; params.xeno_sA = 1.000; params.xeno_sB = 1.000;
     params.xeno_expOff = 1.000; params.xeno_scaleC = 1.000; params.xeno_deOff = 0.000;
@@ -8173,7 +8211,7 @@ void main() {
         st.enabled = false;
         st.min = def.min; st.max = def.max;
         st.pos = clamp((params[def.key] - def.min) / (def.max - def.min), 0, 1);
-        st.dir = 1;
+        st.dir = animationDir;
         if (domVisible) {
           rec.animChk.checked = false;
           rec.animWrap.classList.remove('on');
@@ -8279,7 +8317,7 @@ void main() {
     beginInteraction();
   }, { passive: false });
 
-  /* --- Keyboard shortcuts (H/R/0-9 palettes) with typing-input guard ---- */
+  /* --- Keyboard shortcuts (H/U/R/0-9 palettes) with typing-input guard --- */
   function isTypingTarget(t) {
     if (!t) return false;
     if (t.tagName === 'TEXTAREA') return true;
@@ -8294,6 +8332,31 @@ void main() {
     const k = e.key.toLowerCase();
 
     if (k === 'h') {
+      if (!e.repeat) setPaused(!paused);
+      e.preventDefault();
+    } else if (k === 'b') {
+      if (!e.repeat) {
+        animationDir = -animationDir;
+        for (const key of activeAnims) {
+          const st = animStates[key];
+          if (st) st.dir = -st.dir;
+        }
+        requestRender();
+      }
+      e.preventDefault();
+    } else if (k === 'a') {
+      if (!e.repeat) setAutoRotate(!autoRotate);
+      e.preventDefault();
+    } else if (k === 'q') {
+      if (!e.repeat) setPalette(paletteIndex - 1);
+      e.preventDefault();
+    } else if (k === 'w') {
+      if (!e.repeat) setPalette(paletteIndex + 1);
+      e.preventDefault();
+    } else if (k === 'l') {
+      if (!e.repeat) scaleAnimationSpeed(e.shiftKey ? 10 : 0.1);
+      e.preventDefault();
+    } else if (k === 'u') {
       const hidden = hudEl.classList.toggle('hidden');
       if (!hidden) {
         for (const def of SLIDERS) {
@@ -8389,10 +8452,10 @@ void main() {
     if (!autoRotate) return;
     const sx = params.rot_x_speed, sy = params.rot_y_speed, sz = params.rot_z_speed;
     if (sx === 0 && sy === 0 && sz === 0) return;
-    const step = Math.min(dt, 0.15);
-    rotXAngle = (rotXAngle + sx * step) % 360;
-    rotYAngle = (rotYAngle + sy * step) % 360;
-    rotZAngle = (rotZAngle + sz * step) % 360;
+    const step = Math.min(dt, 0.15) * animationDir * animationSpeed;
+    rotXAngle = ((rotXAngle + sx * step) % 360 + 360) % 360;
+    rotYAngle = ((rotYAngle + sy * step) % 360 + 360) % 360;
+    rotZAngle = ((rotZAngle + sz * step) % 360 + 360) % 360;
     buildRotationMatrix(autoRotBuf, rotXAngle, rotYAngle, rotZAngle);
   }
 
@@ -8414,7 +8477,7 @@ void main() {
      ------------------------------------------------------------------ */
 
   const SHARE_FLASH_MS = 1600;
-  const SHARE_BTN_LABEL = 'Share this fractal';
+  const SHARE_BTN_LABEL = 'Save/share fractal';
   let shareFlashTimer = 0;
 
   function shareFlash(label, ok = true) {
@@ -8448,6 +8511,8 @@ void main() {
        to their defaults so pasting a link restores the exact state. */
     add('full', '1');
     if (autoRotate) add('rot', '1');
+    if (animationDir < 0) add('rev', '1');
+    if (animationSpeed !== 1) add('aspeed', shareNumber(animationSpeed));
     if (paletteIndex !== 0) add('pal', String(paletteIndex));
     if (colorShift !== 0) add('csh', shareNumber(colorShift));
 
@@ -8553,7 +8618,8 @@ void main() {
   function isShareQuery(query) {
     if (query.has('full') ||
         query.has('id') || query.has('fractal') ||
-        query.has('rot') || query.has('rotate') ||
+        query.has('rot') || query.has('rotate') || query.has('rev') ||
+        query.has('aspeed') ||
         query.has('pal') || query.has('palette') ||
         query.has('anim') || query.has('csh') ||
         query.has('yaw') || query.has('pitch') || query.has('dist') ||
@@ -8572,6 +8638,8 @@ void main() {
     if (parseShareFlag(query.get('full'), false)) {
       for (const key of Object.keys(PARAM_DEFAULTS)) params[key] = PARAM_DEFAULTS[key];
       colorShift = 0;
+      animationDir = 1;
+      animationSpeed = 1;
       yaw = CAM_DEFAULT.yaw; pitch = CAM_DEFAULT.pitch; camDist = CAM_DEFAULT.dist;
       rotXAngle = rotYAngle = rotZAngle = 0;
       autoRotBuf.set([1, 0, 0, 0, 1, 0, 0, 0, 1]);
@@ -8598,6 +8666,15 @@ void main() {
 
     const rotRaw = query.get('rot') !== null ? query.get('rot') : query.get('rotate');
     if (rotRaw !== null) setAutoRotate(parseShareFlag(rotRaw, autoRotate));
+
+    const revRaw = query.get('rev');
+    if (revRaw !== null) animationDir = parseShareFlag(revRaw, false) ? -1 : 1;
+
+    const aspeedRaw = query.get('aspeed');
+    if (aspeedRaw !== null) {
+      const v = parseFloat(aspeedRaw);
+      if (isFinite(v)) animationSpeed = clamp(v, 0.001, 1000);
+    }
 
     const numberParam = name => {
       const raw = query.get(name);
@@ -8648,6 +8725,7 @@ void main() {
         let n = parseFloat(raw);
         if (!isFinite(n)) continue;
         if (key === 'color_speed') n = clamp(n, 0, 2);
+        else if (key === 'bg_brightness') n = clamp(n, 0, 2);
         else if (key === 'rot_x_speed' || key === 'rot_y_speed' || key === 'rot_z_speed') {
           n = clamp(n, ROT_MIN, ROT_MAX);
         }
@@ -8679,13 +8757,14 @@ void main() {
         st.speed = clamp(speed, 0, 10);
         st.min = lo; st.max = hi;
         st.pos = clamp((params[key] - lo) / Math.max(hi - lo, 1e-12), 0, 1);
-        st.dir = st.pos >= 0.999 ? -1 : 1;
+        st.dir = st.pos >= 0.999 ? -animationDir : animationDir;
         activeAnims.add(key);
       }
     }
 
     syncRotSpeeds();
     syncColorSpeed();
+    syncBgBrightness();
     for (const def of SLIDERS) syncSliderRow(def);
     for (const def of CHECKBOXES) syncSliderRow(def);
     updateSliderVisibility();
@@ -8764,6 +8843,7 @@ void main() {
     u3f(U.u_up, up[0], up[1], up[2]);
 
     u1f(U.u_colorShift, colorShift);
+    u1f(U.u_bgBrightness, params.bg_brightness);
     /* Interaction renders at reduced resolution; skip shadow rays there and
        restore them on the settled frame. */
     u1i(U.u_skipShadows, interactive ? 1 : 0);
@@ -9317,18 +9397,47 @@ void main() {
     }
   }
 
+  function scaleAnimationSpeed(factor) {
+    animationSpeed = clamp(animationSpeed * factor, 0.001, 1000);
+    requestRender();
+  }
+
+  function fpsLabel(text) {
+    return animationDir < 0 ? text + ' ◀' : text;
+  }
+
+  function setPaused(on) {
+    paused = !!on;
+    if (paused) {
+      fpsEl.textContent = fpsLabel('paused');
+    } else {
+      lastTickTime = performance.now();
+      fpsClock = performance.now();
+      frameCount = 0;
+      requestRender();
+    }
+  }
+
   function tick(now) {
     rafId = 0;
+    if (paused) {
+      if (needsRender) {
+        renderFrame();
+        needsRender = false;
+      }
+      fpsEl.textContent = fpsLabel('paused');
+      return;
+    }
     const dt = Math.max(0, (now - lastTickTime) / 1000);
     lastTickTime = now;
     if (!needsRender && !hasActiveAnimations() && !autoRotateActive() && !colorSpeedActive()) {
-      fpsEl.textContent = 'idle';
+      fpsEl.textContent = fpsLabel('idle');
       return;
     }
     frameCount++;
     const elapsed = now - fpsClock;
     if (elapsed >= 300) {
-      fpsEl.textContent = (frameCount * 1000 / elapsed).toFixed(1) + ' FPS';
+      fpsEl.textContent = fpsLabel((frameCount * 1000 / elapsed).toFixed(1) + ' FPS');
       frameCount = 0; fpsClock = now;
     }
     updateAnimations(dt);
@@ -9339,7 +9448,7 @@ void main() {
     if (hasActiveAnimations() || autoRotateActive() || colorSpeedActive()) {
       rafId = requestAnimationFrame(tick);
     } else {
-      fpsEl.textContent = 'idle';
+      fpsEl.textContent = fpsLabel('idle');
     }
   }
   setPalette(0);
