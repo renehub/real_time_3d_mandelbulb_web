@@ -7963,6 +7963,30 @@ void main() {
     if (changed) markParamsDirty();
   }
 
+  /* Per-fractal defaults applied both when selecting a fractal and on reset. */
+  function applyFractalDefaults(t) {
+    if (t === 58 || t === 59 || t === 61 || t === 77) params.bailout = 10.0;
+    else if (t === 3 || t === 5 || t === 60) params.bailout = 2.5;
+    else if (t === 62 || (t >= 63 && t <= 66)) params.bailout = 100.0;
+    else if (t >= 67 && t <= 76) params.bailout = 10.0;
+    else if (t === 78 || t === 79) params.bailout = 100.0;
+    else if (t >= 80 && t <= 113) params.bailout = 10.0;
+    else if (t >= 15 && t <= 27) params.bailout = 100.0;
+    else if (t >= 28 && t <= 31) params.bailout = 10.0;
+    else if (t === 36 || t === 47 || t === 52 ||
+             t === 53 || t === 56 || t === 57) params.bailout = 100.0;
+    else if (t >= 32 && t <= 57) params.bailout = 10.0;
+
+    if (t === 9 || (t >= 63 && t <= 66)) {
+      const az = t === 9 ? 0.113 : 1.0;
+      params.ab_addX = 1.0;
+      params.ab_addY = 1.0;
+      params.ab_addZ = az;
+      return true;
+    }
+    return false;
+  }
+
   function resetAll() {
     activeAnims.clear();
     animationDir = 1;
@@ -8198,6 +8222,8 @@ void main() {
     params.m_add111d5X = 1.000; params.m_add111d5Y = 1.000; params.m_add111d5Z = 1.000; params.m_add111d5W = 0.500;
     params.m_int1 = 1; params.m_int8X = 8;
 
+    applyFractalDefaults(fractalType);
+
     const hudVisible = !hudEl.classList.contains('hidden');
     for (const def of SLIDERS) {
       const rec = ui[def.key];
@@ -8232,21 +8258,8 @@ void main() {
   function setFractal(t) {
     fractalType = t | 0;
     if (!activateProgram(fractalType)) return;
-    /* Mandelbulber bailout defaults for the Kleinian family. */
-    if (fractalType === 58 || fractalType === 59 || fractalType === 61 || fractalType === 77) params.bailout = 10.0;
-    else if (fractalType === 3 || fractalType === 5 || fractalType === 60) params.bailout = 2.5;
-    else if (fractalType === 62 || (fractalType >= 63 && fractalType <= 66)) params.bailout = 100.0;
-    else if (fractalType >= 67 && fractalType <= 76) params.bailout = 10.0;
-    else if (fractalType === 78 || fractalType === 79) params.bailout = 100.0;
-    else if (fractalType >= 80 && fractalType <= 113) params.bailout = 10.0;
-    else if (fractalType >= 15 && fractalType <= 27) params.bailout = 100.0;
-    else if (fractalType >= 28 && fractalType <= 31) params.bailout = 10.0;
-    else if (fractalType === 36 || fractalType === 47 || fractalType === 52 ||
-             fractalType === 53 || fractalType === 56 || fractalType === 57) params.bailout = 100.0;
-    else if (fractalType >= 32 && fractalType <= 57) params.bailout = 10.0;
-    if (fractalType === 9 || (fractalType >= 63 && fractalType <= 66)) {
-      const az = fractalType === 9 ? 0.113 : 1.0;
-      params.ab_addX = 1.0; params.ab_addY = 1.0; params.ab_addZ = az;
+    const abAddChanged = applyFractalDefaults(fractalType);
+    if (abAddChanged) {
       for (const k of ['ab_addX', 'ab_addY', 'ab_addZ']) {
         if (ui[k]) { ui[k].input.value = params[k]; refreshSlider(ui[k].def); }
       }
