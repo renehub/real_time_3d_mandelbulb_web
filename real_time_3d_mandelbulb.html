@@ -7963,25 +7963,41 @@ void main() {
     if (changed) markParamsDirty();
   }
 
+  /* Fractal-specific defaults. Returns null when the global default applies. */
+  function fractalDefaultValue(t, key) {
+    if (key === 'bailout') {
+      if (t === 58 || t === 59 || t === 61 || t === 77) return 10.0;
+      if (t === 3 || t === 5 || t === 60) return 2.5;
+      if (t === 62 || (t >= 63 && t <= 66)) return 100.0;
+      if (t >= 67 && t <= 76) return 10.0;
+      if (t === 78 || t === 79) return 100.0;
+      if (t >= 80 && t <= 113) return 10.0;
+      if (t >= 15 && t <= 27) return 100.0;
+      if (t >= 28 && t <= 31) return 10.0;
+      if (t === 36 || t === 47 || t === 52 ||
+          t === 53 || t === 56 || t === 57) return 100.0;
+      if (t >= 32 && t <= 57) return 10.0;
+      return null;
+    }
+    if (key === 'ab_addX' || key === 'ab_addY' || key === 'ab_addZ') {
+      if (t === 9 || (t >= 63 && t <= 66)) {
+        if (key === 'ab_addZ') return t === 9 ? 0.113 : 1.0;
+        return 1.0;
+      }
+    }
+    return null;
+  }
+
   /* Per-fractal defaults applied both when selecting a fractal and on reset. */
   function applyFractalDefaults(t) {
-    if (t === 58 || t === 59 || t === 61 || t === 77) params.bailout = 10.0;
-    else if (t === 3 || t === 5 || t === 60) params.bailout = 2.5;
-    else if (t === 62 || (t >= 63 && t <= 66)) params.bailout = 100.0;
-    else if (t >= 67 && t <= 76) params.bailout = 10.0;
-    else if (t === 78 || t === 79) params.bailout = 100.0;
-    else if (t >= 80 && t <= 113) params.bailout = 10.0;
-    else if (t >= 15 && t <= 27) params.bailout = 100.0;
-    else if (t >= 28 && t <= 31) params.bailout = 10.0;
-    else if (t === 36 || t === 47 || t === 52 ||
-             t === 53 || t === 56 || t === 57) params.bailout = 100.0;
-    else if (t >= 32 && t <= 57) params.bailout = 10.0;
+    const bailout = fractalDefaultValue(t, 'bailout');
+    if (bailout !== null) params.bailout = bailout;
 
-    if (t === 9 || (t >= 63 && t <= 66)) {
-      const az = t === 9 ? 0.113 : 1.0;
-      params.ab_addX = 1.0;
-      params.ab_addY = 1.0;
-      params.ab_addZ = az;
+    const abX = fractalDefaultValue(t, 'ab_addX');
+    if (abX !== null) {
+      params.ab_addX = abX;
+      params.ab_addY = fractalDefaultValue(t, 'ab_addY');
+      params.ab_addZ = fractalDefaultValue(t, 'ab_addZ');
       return true;
     }
     return false;
@@ -8536,11 +8552,14 @@ void main() {
     if (rotYAngle !== 0) add('ray', shareNumber(rotYAngle));
     if (rotZAngle !== 0) add('raz', shareNumber(rotZAngle));
 
-    /* Every slider/checkbox parameter that differs from its pristine value.
-       Keeping defaults out makes typical links short enough to paste around. */
+    /* Every slider/checkbox parameter that differs from the value that will
+       exist after loading the link: fractal defaults for bailout/ab_add*, and
+       the global defaults for everything else. */
     for (const key of Object.keys(params)) {
       const value = params[key];
-      if (value === PARAM_DEFAULTS[key]) continue;
+      const fractalDefault = fractalDefaultValue(fractalType, key);
+      const dflt = fractalDefault !== null ? fractalDefault : PARAM_DEFAULTS[key];
+      if (value === dflt) continue;
       if (typeof value === 'boolean') add(key, value ? '1' : '0');
       else if (typeof value === 'number') add(key, shareNumber(value));
     }
@@ -8648,7 +8667,8 @@ void main() {
 
     /* A generated "full" link resets everything first, then applies the
        values it carries. Hand-written partial links keep current values. */
-    if (parseShareFlag(query.get('full'), false)) {
+    const isFull = parseShareFlag(query.get('full'), false);
+    if (isFull) {
       for (const key of Object.keys(PARAM_DEFAULTS)) params[key] = PARAM_DEFAULTS[key];
       colorShift = 0;
       animationDir = 1;
@@ -8666,9 +8686,16 @@ void main() {
     }
 
     const idRaw = query.get('id') !== null ? query.get('id') : query.get('fractal');
+    let loadedId = null;
     if (idRaw !== null && idRaw !== '') {
       const id = parseInt(idRaw, 10);
-      if (FRACTAL_BY_ID.has(id) && id !== fractalType) setFractal(id);
+      if (FRACTAL_BY_ID.has(id)) loadedId = id;
+    }
+    if (loadedId !== null && loadedId !== fractalType) {
+      setFractal(loadedId);
+    } else if (isFull) {
+      /* The global reset above also reset the selected fractal's overrides. */
+      applyFractalDefaults(loadedId !== null ? loadedId : fractalType);
     }
 
     const palRaw = query.get('pal') !== null ? query.get('pal') : query.get('palette');
