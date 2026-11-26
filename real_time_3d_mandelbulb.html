@@ -751,26 +751,21 @@ uniform int   u_s_startS, u_s_stopS, u_s_startR, u_s_stopR;
 uniform int   u_s_startX, u_s_stopX, u_s_startY, u_s_stopY, u_s_startZ, u_s_stopZ;
 
 /* Shared Kleinian uniforms (indices 15-31) */
-uniform float u_k_folding, u_k_b, u_k_c;
+uniform float u_k_folding, u_k_b;
 uniform float u_k_minR05, u_k_maxR2, u_k_minR2p25;
 uniform float u_k_scale1, u_k_scaleA1, u_k_scaleB1, u_k_scaleG1;
 uniform float u_k_tweak, u_k_offset1, u_k_anDEscale, u_k_anDEoff0;
 uniform float u_k_offset0, u_k_offsetA0, u_k_offsetB0, u_k_offsetC0, u_k_offsetD0;
-uniform float u_k_offsetA1, u_k_offsetA2, u_k_offsetR0, u_k_offset02;
-uniform float u_k_offset05, u_k_offsetp05, u_k_scale05, u_k_offset0005;
-uniform float u_k_scale2, u_k_scaleA2, u_k_scaleF1, u_k_scaleC1, u_k_scaleD1;
-uniform float u_k_scale3, u_k_scale015, u_k_scale08, u_k_scaleNeg1, u_k_scale1p1;
+uniform float u_k_offsetA1, u_k_offsetR0, u_k_offset02;
+uniform float u_k_scale2, u_k_scaleA2, u_k_scaleF1;
+uniform float u_k_scale3, u_k_scale1p1;
 uniform vec3  u_k_cmult000;
 uniform vec3  u_k_box, u_k_off000, u_k_add000, u_k_offsetA000, u_k_addA000;
-uniform vec3  u_k_add111, u_k_add222, u_k_csize, u_k_offF000, u_k_addP000, u_k_add0555;
-uniform vec3  u_k_scale3D222, u_k_scale3D333, u_k_scale3D111, u_k_scale3D000;
-uniform vec4  u_k_csize4, u_k_off1111, u_k_off0000, u_k_offA0000, u_k_offB1111, u_k_scale0000;
-uniform int   u_k_sphereInv, u_k_rotEnabled, u_k_prism, u_k_boxFoldAbs, u_k_tglad;
-uniform int   u_k_spheresEnabled, u_k_anDEenabled, u_k_varClip, u_k_negZ;
-uniform int   u_k_negX, u_k_negY, u_k_Mfold, u_k_T1, u_k_T1M, u_k_Ffold;
-uniform int   u_k_regulator, u_k_addCpixel, u_k_Sfold, u_k_diagonal, u_k_Gfold, u_k_Nfold;
+uniform vec3  u_k_add111, u_k_add222, u_k_csize, u_k_offF000;
+uniform vec4  u_k_off1111;
+uniform int   u_k_spheresEnabled;
 uniform int   u_k_int32, u_k_int8X;
-uniform mat3  u_k_rotMat;
+
 
 /* Shared Menger uniforms (indices 32-57) */
 uniform float u_m_scale3, u_m_offset1, u_m_offset0, u_m_offsetA1, u_m_offsetT1, u_m_offset2;
@@ -6001,7 +5996,7 @@ void main() {
             sp *= sp; sp *= sp; sp *= sp; sp *= sp; sp *= sp;
             spec = sp * shadowK;
         }
-        float aoT = float(hitSteps) / 128.0;
+        float aoT = float(hitSteps) / max(float(u_max_steps), 1.0);
         float aoS = sqrt(aoT);
         float ao = clamp(1.0 - aoS * sqrt(aoS), 0.1, 1.0);
 
@@ -6527,7 +6522,7 @@ void main() {
     s4d_rotEnabled: false, s4d_analyticDE: false,
 
     /* Kleinian shared (15-31) */
-    k_folding: 2.000, k_b: 0.000, k_foldingLimit: 1.000,
+    k_folding: 2.000, k_b: 0.000,
     k_minR05: 0.500, k_minR2p25: 0.250, k_maxR2: 1.000,
     k_scale1: 1.000, k_scaleA1: 1.000, k_scaleB1: 1.000, k_scaleG1: 1.000,
     k_scale2: 2.000, k_scaleA2: 2.000, k_scale1p1: 1.100,
@@ -7111,7 +7106,6 @@ void main() {
     /* Kleinian shared (15-31) */
     { key:'k_folding',         label:'foldingValue', min:0.1, max:4.0, step:0.001, accent:'#ffaf5f', fractal:'kleinian', fmt:v=>v.toFixed(3) },
     { key:'k_b',               label:'transformCommon.offset', min:-1.0, max:1.0, step:0.001, accent:'#ffaf5f', fractal:'kleinian', fmt:v=>v.toFixed(3) },
-    { key:'k_foldingLimit',    label:'foldingLimit', min:0.0, max:2.0, step:0.001, accent:'#ffaf5f', fractal:'kleinian', fmt:v=>v.toFixed(3) },
     { key:'k_minR05',          label:'minR05', min:0.01, max:1.5, step:0.001, accent:'#ffc040', fractal:'kleinian', fmt:v=>v.toFixed(3) },
     { key:'k_minR2p25',        label:'minR2p25', min:0.01, max:1.0, step:0.001, accent:'#e2a0ff', fractal:'kleinian', fmt:v=>v.toFixed(3) },
     { key:'k_maxR2',           label:'maxR2d1', min:0.01, max:2.0, step:0.001, accent:'#c0e0ff', fractal:'kleinian', fmt:v=>v.toFixed(3) },
@@ -8203,7 +8197,7 @@ void main() {
     params.s4d_rotEnabled = false; params.s4d_analyticDE = false;
 
     /* Kleinian shared defaults */
-    params.k_folding = 2.000; params.k_b = 0.000; params.k_foldingLimit = 1.000;
+    params.k_folding = 2.000; params.k_b = 0.000;
     params.k_minR05 = 0.500; params.k_minR2p25 = 0.250; params.k_maxR2 = 1.000;
     params.k_scale1 = 1.000; params.k_scaleA1 = 1.000;
     params.k_scaleB1 = 1.000; params.k_scaleG1 = 1.000;
